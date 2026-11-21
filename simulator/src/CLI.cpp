@@ -1,4 +1,5 @@
 #include "CLI.hpp"
+#include "Constants.hpp"
 #include "MicroMachine.hpp"
 #include "RAM.hpp"
 #include "io/BinaryImage.hpp"
@@ -59,8 +60,9 @@ void printOutput(const MicroCycleEvent& event, bool& characterLineOpen) {
             characterLineOpen = false;
         }
 
-        const std::int64_t signedValue = event.output <= 0x7FFFFFFFu
-            ? event.output : std::int64_t{event.output} - 0x100000000LL;
+        // Valores acima de maxPositiveWord representam negativos em complemento à dois
+        const std::int64_t signedValue = event.output <= mic1::constants::maxPositiveWord
+            ? event.output : std::int64_t{event.output} - mic1::constants::wordModulus;
 
         std::cout << "PROGRAM_OUT=" << signedValue << '\n';
     }
@@ -110,7 +112,7 @@ int runCLI(int argc, char* argv[]) {
 
     try {
         RAM ram;
-        const auto loadedWords = loadBinaryImage(options.program, ram); // Carrega o programa binário na memória principal.
+        const auto loadedWords = loadBinaryImage(options.program, ram); // carrega o programa binário na RAM
 
         MicroMachine machine(ram);
         bool characterLineOpen = false;

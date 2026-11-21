@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-inline constexpr std::array<std::uint64_t, 79> mic1Rom = {
+inline constexpr std::array<std::uint64_t, 79> microasm = {
     0x10C004001ULL,
     0x005098201ULL,
     0xB01200038ULL,

@@ -1,11 +1,13 @@
 #pragma once
 
+#include "../Constants.hpp"
+
 #include <cstdint>
 #include <stdexcept>
 
 class MIR {
 public:
-    static constexpr std::uint64_t mask = (std::uint64_t{1} << 36) - 1;
+    static constexpr std::uint64_t mask = mic1::constants::controlWordMask;
 
     std::uint64_t read() const { return storedValue; }
     void write(std::uint64_t value, bool enable = true);

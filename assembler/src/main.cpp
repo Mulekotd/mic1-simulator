@@ -12,7 +12,7 @@ void usage() {
 }
 
 bool sameFile(const std::filesystem::path& left, const std::filesystem::path& right) {
-    // Impede que a saída sobrescreva a entrada ou a própria listagem.
+    // impede que a saída sobrescreva a entrada ou a própria listagem
     if (std::filesystem::absolute(left).lexically_normal() == std::filesystem::absolute(right).lexically_normal())
         return true;
 

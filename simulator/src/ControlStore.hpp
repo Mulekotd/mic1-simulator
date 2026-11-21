@@ -1,12 +1,14 @@
 #pragma once
 
+#include "Constants.hpp"
+
 #include <array>
 #include <cstdint>
 #include <stdexcept>
 
 class ControlStore {
 public:
-    static constexpr std::uint64_t wordMask = (std::uint64_t{1} << 36) - 1;
+    static constexpr std::uint64_t wordMask = mic1::constants::controlWordMask;
 
     std::uint64_t read(std::uint8_t address) const { return words[address]; };
     void write(std::uint8_t address, std::uint64_t word);

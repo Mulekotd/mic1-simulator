@@ -52,6 +52,8 @@ O bit 35 é o mais significativo. Campos não usados por uma micro-operação s�
 
 Cada palavra de `ctrl.bin` ocupa **5 bytes little-endian**: bits 0–35 da microinstrução e quatro bits altos zerados no quinto byte. O arquivo pode conter até 256 palavras; endereços não fornecidos ficam zerados. Isso é distinto do `.bin` de programas, que usa palavras de 4 bytes.
 
+Little-endian é a convenção dos arquivos binários deste projeto: o montador grava primeiro o byte menos significativo e o carregador recompõe a palavra nessa mesma ordem. A RAM do simulador guarda palavras inteiras de 32 bits e usa endereços por palavra; portanto a escolha da ordem dos bytes no arquivo não acelera a ULA nem muda o caminho de dados. Big-endian também funcionaria se todos os gravadores e leitores fossem alterados juntos. O vetor C++ `Mic1Rom.hpp` guarda valores numéricos de 36 bits e não depende da ordem dos bytes de `ctrl.bin`.
+
 ## Ciclo de execução
 
 Cada ciclo lê A/B do banco, calcula AMUX → ULA → shifter, resolve N/Z e o próximo MPC, e aplica as escritas habilitadas na borda. `RD` ou `WR` inicia uma transação de memória; as linhas repetidas de `rd`/`wr` no microprograma sustentam o pedido até a resposta. A leitura disponibiliza MBR antes da microinstrução que o consome. `tools/microcode/microasm.py` codifica o arquivo simbólico em palavras de 36 bits e gera `ctrl.bin` e `.mlst`; `build_rom.py` usa o mesmo parser para gerar `simulator/src/generated/Mic1Rom.hpp`. As linhas 0 e 1 contêm `ifetch`, que define `IF=1` para a futura I-cache.

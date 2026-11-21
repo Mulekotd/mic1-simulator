@@ -23,7 +23,7 @@ inline std::size_t loadBinaryImage(const std::string& path, Memory& memory) {
     if (file.bad())
         throw std::runtime_error("erro ao ler o programa: " + path);
 
-    // Verifica a imagem inteira antes de alterar o conteúdo da memória.
+    // verifica a imagem inteira antes de alterar o conteúdo da memória
     if (bytes.size() % Memory::wordBytes != 0)
         throw std::runtime_error("o tamanho do programa deve ser múltiplo de 4 bytes");
 
@@ -34,7 +34,7 @@ inline std::size_t loadBinaryImage(const std::string& path, Memory& memory) {
 
     memory.reset();
 
-    // O montador grava o byte menos significativo primeiro (little endian).
+    // cada shift recoloca um byte na posição 0, 8, 16 ou 24 de uma palavra little-endian
     for (std::size_t i = 0; i < words; ++i) {
         const std::size_t offset = i * Memory::wordBytes;
         const Word value = Word(bytes[offset]) |

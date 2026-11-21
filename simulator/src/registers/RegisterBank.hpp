@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../Constants.hpp"
+
 #include <array>
 #include <cstdint>
 #include <stdexcept>
@@ -40,9 +42,9 @@ inline void RegisterBank::write(std::uint8_t index, std::uint32_t value, bool en
 
 inline void RegisterBank::reset() {
     values.fill(0);             // Zera os 32 registradores
-    values[SP] = 0xFFC;         // Inicia a pilha no endereço de palavra 4092
+    values[SP] = mic1::constants::initialStackPointer; // Inicia a pilha antes da região de E/S
     values[ONE] = 1;            // Constante +1
-    values[MONE] = 0xFFFFFFFF;  // Constante -1
-    values[AMASK] = 0x00000FFF; // Máscara dos 12 bits do campo de endereço x
-    values[SMASK] = 0x000000FF; // Máscara dos 8 bits do campo y
+    values[MONE] = mic1::constants::negativeOne;       // Constante -1
+    values[AMASK] = mic1::constants::addressFieldMask; // Máscara dos 12 bits do campo de endereço x
+    values[SMASK] = mic1::constants::lowByteMask;      // Máscara dos 8 bits do campo y
 }

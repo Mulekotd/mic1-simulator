@@ -7,13 +7,13 @@ class ALU {
 public:
     struct Result {
         std::uint32_t value;
-        bool n;
-        bool z;
+        bool n; // N lê o bit 31, que sinaliza valor negativo em complemento à dois
+        bool z; // Z testa se todos os bits são zero
     };
 
 private:
     static Result makeResult(std::uint32_t value) {
-        return {value, (value & (std::uint32_t{1} << 31)) != 0, value == 0};
+        return { value, (value & (std::uint32_t{1} << 31)) != 0, value == 0 };
     }
 
 public:

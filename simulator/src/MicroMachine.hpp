@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-// Retrato da microinstrução executada e dos efeitos observáveis no ciclo.
+// Dados observáveis de um ciclo da microinstrução
 struct MicroCycleEvent {
     std::uint8_t mpc = 0;
     std::uint64_t word = 0;
@@ -20,14 +20,14 @@ struct MicroCycleEvent {
 
 class MicroMachine {
 private:
-    // Transação pendente da RAM; a latência padrão é de dois ciclos.
+    // Transação de memória que ainda consome ciclos até a resposta
     struct Pending {
         bool active = false;
         bool read = false;
         Word address = 0;
         Word value = 0;
         unsigned remaining = 0;
-        bool repeatSeen = false;
+        bool repeat = false;
     };
 
 public:
@@ -53,12 +53,12 @@ public:
     void setMemoryLatency(unsigned cycles) { memoryLatency = cycles; }
 
 private:
-
     Memory& memory;
     CPURegisters cpuState;
     ControlStore control;
     Clock clock;
     Pending pending;
+
     std::uint64_t instructionCount = 0;
     bool haltedFlag = false;
     unsigned memoryLatency = 2;

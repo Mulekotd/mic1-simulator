@@ -16,7 +16,7 @@ def render_header(words):
 
     return (
         '#pragma once\n\n#include <array>\n#include <cstdint>\n\n'
-        f'inline constexpr std::array<std::uint64_t, {len(words)}> mic1Rom = {{\n'
+        f'inline constexpr std::array<std::uint64_t, {len(words)}> microasm = {{\n'
         f'{values}\n}};\n'
     )
 

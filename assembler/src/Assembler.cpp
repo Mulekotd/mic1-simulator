@@ -24,7 +24,7 @@ constexpr std::array<std::string_view, 8> formatB = {
     "PSHI", "POPI", "PUSH", "POP", "RETN", "SWAP", "INSP", "DESP"
 };
 
-// Mantém a posição original para apontar erros com linha e coluna.
+// Mantém a posição original para apontar erros com linha e coluna
 struct SourceLine {
     std::size_t number;
     std::string text;
@@ -46,8 +46,8 @@ public:
 
     Program assemble() {
         readSource();
-        firstPass(); // Coleta rótulos
-        return secondPass(); // Resolve operandos e codifica
+        firstPass();         // coleta rótulos
+        return secondPass(); // resolve operandos e codifica
     }
 
 private:
@@ -57,7 +57,6 @@ private:
     std::map<std::string, std::uint32_t> symbols;
     std::uint32_t imageWords = 0;
 
-    // Usa noreturn para ajudar o compilador a analisar o fluxo do código e melhorar os avisos de falha
     [[noreturn]] void error(std::size_t line, std::size_t column, const std::string& message) const {
         throw std::runtime_error(input.string() + ":" + std::to_string(line) + ":" + std::to_string(column) + ": " + message);
     }
@@ -111,7 +110,7 @@ private:
     }
 
     std::int64_t number(std::string_view token, std::size_t line, std::size_t column) const {
-        // Aceita decimal e hexadecimal, com sinal opcional.
+        // aceita decimal e hexadecimal, com sinal opcional
         bool negative = false;
 
         if (!token.empty() && (token.front() == '-' || token.front() == '+')) {
@@ -140,7 +139,6 @@ private:
     }
 
     std::int64_t operandValue(const Statement& statement) const {
-        // Rótulos são resolvidos somente após a primeira passagem.
         if (identifier(statement.operand)) {
             const auto found = symbols.find(statement.operand);
 
@@ -165,7 +163,7 @@ private:
     }
 
     void firstPass() {
-        // Cada instrução ou .word ocupa uma palavra; .org avança o endereço.
+        // cada instrução ou .word ocupa uma palavra; .org avança o endereço.
         std::uint32_t address = 0;
 
         for (const auto& source : lines) {
@@ -270,7 +268,7 @@ private:
     std::uint32_t encode(const Statement& statement) const {
         const auto& op = statement.operation;
 
-        // Atalhos de E/S: STOD nos endereços mapeados para saída e parada.
+        // atalhos de E/S: STOD nos endereços mapeados para saída e parada
         if (op == "OUTI") return 0x10000FFFu;
         if (op == "OUTC") return 0x10000FFEu;
         if (op == "HALT") return 0x10000FFDu;
@@ -286,7 +284,7 @@ private:
         const auto a = std::find(formatA.begin(), formatA.end(), op);
 
         if (a != formatA.end()) {
-            // Formato A: opcode nos quatro bits altos e campo x de 12 bits.
+            // formato A: opcode nos quatro bits altos e campo x de 12 bits
             const auto value = operandValue(statement);
 
             if (value < 0 || value > 4095)
@@ -297,7 +295,7 @@ private:
 
         const auto b = std::find(formatB.begin(), formatB.end(), op);
 
-        // Formato B: subopcode par; INSP e DESP também usam o campo y.
+        // formato B: subopcode par; INSP e DESP também usam o campo y
         const auto subOpcode = static_cast<std::uint32_t>(2 * (b - formatB.begin()));
 
         std::uint32_t value = 0;
@@ -317,7 +315,7 @@ private:
     Program secondPass() const {
         Program result;
 
-        // Os endereços pulados por .org são preenchidos com palavras zero.
+        // os endereços pulados por .org são preenchidos com palavras zero
         result.words.resize(imageWords, 0);
         result.sources.resize(imageWords, "; preenchimento de .org");
         result.lines.resize(imageWords, 0);

@@ -7,7 +7,7 @@
 #include <vector>
 
 struct Program {
-    std::vector<std::uint32_t> words; // A listagem acompanha cada palavra, inclusive os espaços criados por .org.
+    std::vector<std::uint32_t> words;
     std::vector<std::string> sources;
     std::vector<std::size_t> lines;
 };

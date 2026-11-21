@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Constants.hpp"
 #include "MicroMachine.hpp"
 #include "RAM.hpp"
 #include "io/BinaryImage.hpp"
@@ -11,20 +12,17 @@
 #include <string>
 #include <vector>
 
+// Guarda estados anteriores para permitir voltar um ciclo na simulação
 class Session {
 public:
     void load(const std::string& path) {
         RAM loaded;
         loadBinaryImage(path, loaded);
-
         ram = loaded;
         machine = std::make_unique<MicroMachine>(ram);
-
         program = path;
-
         history.clear();
         output.clear();
-
         running = false;
     }
 
@@ -41,15 +39,16 @@ public:
 
         history.push_back({ ram, machine->snapshot(), output.size() });
 
-        if (history.size() > 1024)
+        if (history.size() > 1024) // limita o histórico em 1024 ciclos
             history.pop_front();
 
         try {
             const auto event = machine->step();
 
             if (event.integerOutput) {
-                const std::int64_t signedValue = event.output <= 0x7FFFFFFFu
-                    ? event.output : std::int64_t{event.output} - 0x100000000LL;
+                // Valores acima de maxPositiveWord precisam subtrair wordModulus para recuperar o sinal
+                const std::int64_t signedValue = event.output <= mic1::constants::maxPositiveWord
+                    ? event.output : std::int64_t{event.output} - mic1::constants::wordModulus;
 
                 output.push_back("PROGRAM_OUT=" + std::to_string(signedValue));
             }

@@ -10,7 +10,7 @@ void writeProgram(const Program& program, const std::filesystem::path& output, c
     if (!binary)
         throw std::runtime_error("não foi possível criar: " + output.string());
 
-    // O simulador lê cada palavra de 32 bits em ordem little endian.
+    // simulador lê as palavras de 32 bits em ordem little-endian
     for (const auto word : program.words) {
         for (unsigned shift = 0; shift < 32; shift += 8)
             binary.put(static_cast<char>((word >> shift) & 0xFFu));

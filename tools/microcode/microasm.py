@@ -12,11 +12,13 @@ REGISTERS = {
     **{chr(ord('a') + index): 10 + index for index in range(6)}
 }
 
-PHASES = {'busca': 'Busca', 'identifica': 'Identifica', 'executa': 'Executa'}
+PHASES = { 'busca': 'Busca', 'identifica': 'Identifica', 'executa': 'Executa' }
 
 
 @dataclass(frozen=True)
 class Instruction:
+    """Microinstrução codificada junto da localização e da fase da fonte."""
+
     address: int
     word: int
     phase: str
@@ -29,10 +31,12 @@ class MicroasmError(ValueError):
 
 
 def fail(line, message):
+    """Relata um erro de montagem com o número da linha da fonte."""
     raise MicroasmError(f'linha {line}: {message}')
 
 
 def register(name, line):
+    """Converte o nome de um registrador no índice do banco de 32 posições."""
     if name not in REGISTERS:
         fail(line, f'registrador desconhecido: {name}')
 
@@ -40,7 +44,11 @@ def register(name, line):
 
 
 def parse_expression(source, mar_source, line):
-    """Resolve a expressão da ULA e a seleção comum do barramento B/MAR."""
+    """Retorna AMUX, ULA, shifter e fontes A/B para uma expressão simbólica.
+
+    MAR e a segunda entrada da ULA compartilham o barramento B; MBR só pode
+    alimentar a primeira entrada por AMUX.
+    """
 
     source = re.sub(r'\s+', '', source.lower())
     shift = 0
@@ -93,7 +101,11 @@ def parse_expression(source, mar_source, line):
 
 
 def encode(body, line):
-    """Valida cláusulas e empacota AMUX, COND, ULA, SH, destinos e ADDR."""
+    """Valida cláusulas e codifica uma palavra de controle de 36 bits.
+
+    Os shifts posicionam cada campo no intervalo de bits definido pela MIC-1;
+    o OR combina campos que não se sobrepõem.
+    """
 
     clauses = [part.strip().lower() for part in body.split(';') if part.strip()]
 
@@ -180,7 +192,11 @@ def encode(body, line):
 
 
 def assemble(source):
-    """Lê endereços explícitos; as posições omitidas viram palavras zero."""
+    """Monta a fonte em um dicionário indexado por endereço de controle.
+
+    Aceita endereços de 0 a 255; endereços ausentes viram zero na imagem
+    binária. A diretiva ; @phase altera apenas a fase exibida na listagem.
+    """
 
     instructions = {}
     phase = 'Executa'
@@ -226,7 +242,7 @@ def assemble(source):
 
 
 def binary_image(instructions):
-    """Grava cinco bytes little endian por palavra, inclusive lacunas internas."""
+    """Retorna cinco bytes little-endian por endereço até a última instrução."""
 
     return b''.join(
         instructions[address].word.to_bytes(5, 'little') if address in instructions else bytes(5)
@@ -235,7 +251,7 @@ def binary_image(instructions):
 
 
 def listing(instructions):
-    """Relaciona endereço, palavra, fase, linha original e fonte simbólica."""
+    """Gera a listagem legível com endereço, palavra, fase, linha e fonte."""
 
     lines = ['; endereço  palavra    fase        linha  fonte']
 
@@ -250,7 +266,7 @@ def listing(instructions):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('source', type=Path, help='microprograma .masm')
     parser.add_argument('-o', '--output', type=Path, required=True, help='Memória de Controle .bin')
     parser.add_argument('-l', '--listing', type=Path, required=True, help='listagem .mlst')
