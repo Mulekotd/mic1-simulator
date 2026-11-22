@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <exception>
 #include <iomanip>
+#include <initializer_list>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -29,6 +31,12 @@ struct GuiComponent {
     Vector3 position;
     Vector3 size;
     Color color;
+};
+
+struct GuiRoute {
+    std::array<Vector3, 4> points{};
+    std::size_t count = 4;
+    Color color = GRAY;
 };
 
 std::string hex32(std::uint32_t value) {
@@ -117,7 +125,7 @@ void drawValueLabel(Camera3D camera, Vector3 worldPosition, const char* label,
         return;
 
     DrawRectangleRounded(panel, 0.18f, 5,
-                         active ? Fade(GOLD, 0.92f) : Fade(Color{25, 31, 39, 255}, 0.92f));
+                         Fade(Color{25, 31, 39, 255}, 0.92f));
     DrawText(label, static_cast<int>(panel.x) + 9, static_cast<int>(panel.y) + 5, 11, LIGHTGRAY);
     DrawText(value, static_cast<int>(panel.x) + 9, static_cast<int>(panel.y) + 21, 13, RAYWHITE);
 }
@@ -156,6 +164,28 @@ void drawWireRoute(const std::array<Vector3, 4>& points, std::size_t count,
         DrawSphere(markerPosition, 0.10f, GOLD);
         DrawSphere(markerPosition, 0.20f, Fade(ORANGE, 0.25f));
     }
+}
+
+std::string layoutExport(const std::vector<GuiComponent>& components,
+                         const std::vector<GuiRoute>& routes) {
+    std::ostringstream output;
+    output << "MIC1_LAYOUT_V1\n";
+    output << "COMPONENTS\n";
+    for (const GuiComponent& component : components) {
+        output << component.name << "|"
+               << component.position.x << "|" << component.position.y << "|" << component.position.z << "|"
+               << component.size.x << "|" << component.size.y << "|" << component.size.z << "\n";
+    }
+    output << "WIRES\n";
+    for (std::size_t routeIndex = 0; routeIndex < routes.size(); ++routeIndex) {
+        const GuiRoute& route = routes[routeIndex];
+        output << "route " << routeIndex << "\n";
+        for (std::size_t pointIndex = 0; pointIndex < route.count; ++pointIndex) {
+            const Vector3& point = route.points[pointIndex];
+            output << "  " << pointIndex << "|" << point.x << "|" << point.y << "|" << point.z << "\n";
+        }
+    }
+    return output.str();
 }
 
 } // namespace
@@ -199,29 +229,63 @@ inline int runGUI(const std::string& initialProgram) {
         distance = 20.0f;
     };
 
-    const std::array<GuiComponent, 21> components{{
-        {"PC",    {-6.5f, 0.65f, -4.8f}, {1.05f, 1.0f, 0.85f}, Color{65, 118, 170, 255}},
-        {"AC",    {-5.2f, 0.65f, -4.8f}, {1.05f, 1.0f, 0.85f}, Color{65, 118, 170, 255}},
-        {"SP",    {-3.9f, 0.65f, -4.8f}, {1.05f, 1.0f, 0.85f}, Color{65, 118, 170, 255}},
-        {"IR",    {-2.6f, 0.65f, -4.8f}, {1.05f, 1.0f, 0.85f}, Color{65, 118, 170, 255}},
-        {"TIR",   {-1.3f, 0.65f, -4.8f}, {1.05f, 1.0f, 0.85f}, Color{65, 118, 170, 255}},
-        {"0",     {0.0f, 0.65f, -4.8f}, {1.05f, 1.0f, 0.85f}, Color{65, 118, 170, 255}},
-        {"1",     {1.3f, 0.65f, -4.8f}, {1.05f, 1.0f, 0.85f}, Color{65, 118, 170, 255}},
-        {"-1",    {2.6f, 0.65f, -4.8f}, {1.05f, 1.0f, 0.85f}, Color{65, 118, 170, 255}},
-        {"AMASK", {3.9f, 0.65f, -4.8f}, {1.05f, 1.0f, 0.85f}, Color{65, 118, 170, 255}},
-        {"SMASK", {5.2f, 0.65f, -4.8f}, {1.05f, 1.0f, 0.85f}, Color{65, 118, 170, 255}},
-        {"A Latch", {-4.8f, 0.65f, -1.8f}, {2.0f, 1.0f, 1.0f}, Color{66, 143, 174, 255}},
-        {"B Latch", {-2.3f, 0.65f, -1.8f}, {2.0f, 1.0f, 1.0f}, Color{66, 143, 174, 255}},
-        {"AMUX",    {-4.8f, 0.65f, 0.6f}, {2.0f, 1.0f, 1.0f}, Color{90, 154, 95, 255}},
-        {"ALU",     {-1.2f, 0.72f, 0.6f}, {2.8f, 1.15f, 1.35f}, Color{205, 146, 61, 255}},
-        {"Shifter", {2.3f, 0.65f, 0.6f}, {2.0f, 1.0f, 1.0f}, Color{198, 111, 89, 255}},
-        {"MAR", {-4.8f, 0.65f, 3.3f}, {2.0f, 1.0f, 1.0f}, Color{96, 126, 184, 255}},
-        {"MBR", {-2.3f, 0.65f, 3.3f}, {2.0f, 1.0f, 1.0f}, Color{96, 126, 184, 255}},
-        {"Control Store", {5.1f, 0.85f, -3.2f}, {3.2f, 1.25f, 1.25f}, Color{138, 105, 172, 255}},
-        {"MPC",           {5.1f, 0.65f, -1.4f}, {1.8f, 1.0f, 1.0f}, Color{112, 121, 177, 255}},
-        {"MIR",           {5.1f, 0.65f, 0.6f}, {2.4f, 1.0f, 1.0f}, Color{118, 134, 157, 255}},
-        {"RAM",           {1.2f, 0.65f, 4.7f}, {7.8f, 1.0f, 1.8f}, Color{84, 137, 133, 255}}
+    std::vector<GuiComponent> components = {{
+        {"PC",    {4.7f, 0.65f, -4.2f}, {1.25f, 0.85f, 0.72f}, Color{65, 118, 170, 255}},
+        {"AC",    {4.7f, 0.65f, -3.30f}, {1.25f, 0.85f, 0.72f}, Color{65, 118, 170, 255}},
+        {"SP",    {4.7f, 0.65f, -2.40f}, {1.25f, 0.85f, 0.72f}, Color{65, 118, 170, 255}},
+        {"IR",    {4.7f, 0.65f, -1.50f}, {1.25f, 0.85f, 0.72f}, Color{65, 118, 170, 255}},
+        {"TIR",   {4.7f, 0.65f, -0.60f}, {1.25f, 0.85f, 0.72f}, Color{65, 118, 170, 255}},
+        {"0",     {4.7f, 0.65f, 0.30f}, {1.25f, 0.85f, 0.72f}, Color{65, 118, 170, 255}},
+        {"1",     {4.7f, 0.65f, 1.20f}, {1.25f, 0.85f, 0.72f}, Color{65, 118, 170, 255}},
+        {"-1",    {4.7f, 0.65f, 2.10f}, {1.25f, 0.85f, 0.72f}, Color{65, 118, 170, 255}},
+        {"AMASK", {4.7f, 0.65f, 3.00f}, {1.25f, 0.85f, 0.72f}, Color{65, 118, 170, 255}},
+        {"SMASK", {4.7f, 0.65f, 3.90f}, {1.25f, 0.85f, 0.72f}, Color{65, 118, 170, 255}},
+        {"A Latch", {-1.10f, 0.65f, -3.15f}, {1.85f, 0.95f, 0.95f}, Color{66, 143, 174, 255}},
+        {"B Latch", {1.10f, 0.65f, -3.15f}, {1.85f, 0.95f, 0.95f}, Color{66, 143, 174, 255}},
+        {"AMUX",    {-2.25f, 0.65f, -1.55f}, {1.45f, 0.95f, 0.95f}, Color{90, 154, 95, 255}},
+        {"ALU",     {0.00f, 0.72f, -0.35f}, {3.10f, 1.15f, 1.65f}, Color{205, 146, 61, 255}},
+        {"Shifter", {0.00f, 0.65f, 1.55f}, {2.15f, 0.95f, 1.05f}, Color{198, 111, 89, 255}},
+        {"MAR", {-5.40f, 0.65f, 0.75f}, {1.65f, 0.95f, 0.95f}, Color{96, 126, 184, 255}},
+        {"MBR", {-5.40f, 0.65f, 2.35f}, {1.65f, 0.95f, 0.95f}, Color{96, 126, 184, 255}},
+        {"Control Store", {2.35f, 0.85f, -4.35f}, {2.60f, 1.15f, 1.05f}, Color{138, 105, 172, 255}},
+        {"MPC",           {2.35f, 0.65f, -3.05f}, {1.50f, 0.95f, 0.95f}, Color{112, 121, 177, 255}},
+        {"MIR",           {2.35f, 0.65f, -1.65f}, {2.15f, 0.95f, 0.95f}, Color{118, 134, 157, 255}},
+        {"RAM",           {-5.40f, 0.65f, -2.35f}, {1.95f, 4.10f, 1.95f}, Color{84, 137, 133, 255}}
     }};
+
+    std::vector<GuiRoute> routes;
+    const auto makeRoute = [](std::initializer_list<Vector3> points, Color color) {
+        GuiRoute route;
+        route.count = points.size();
+        route.color = color;
+        std::size_t index = 0;
+        for (const Vector3& point : points)
+            route.points[index++] = point;
+        return route;
+    };
+
+    routes.push_back(makeRoute({{-1.10f, 0.22f, -2.65f}, {-1.10f, 0.22f, -2.10f},
+                                {-1.55f, 0.22f, -1.55f}}, SKYBLUE));
+    routes.push_back(makeRoute({{1.10f, 0.22f, -2.65f}, {1.10f, 0.22f, -2.10f},
+                                {-0.55f, 0.22f, -1.55f}}, SKYBLUE));
+    routes.push_back(makeRoute({{-2.25f, 0.22f, -1.05f}, {-2.25f, 0.22f, -0.35f},
+                                {-1.55f, 0.22f, -0.35f}}, GREEN));
+    routes.push_back(makeRoute({{-1.55f, 0.22f, -0.35f}, {-0.75f, 0.22f, -0.35f},
+                                {-0.75f, 0.22f, 0.45f}}, GOLD));
+    routes.push_back(makeRoute({{0.75f, 0.22f, 0.45f}, {0.75f, 0.22f, 0.95f},
+                                {0.75f, 0.22f, 1.55f}}, ORANGE));
+    routes.push_back(makeRoute({{-5.40f, 0.22f, -0.20f}, {-5.40f, 0.22f, 0.75f},
+                                {-4.55f, 0.22f, 0.75f}}, PURPLE));
+    routes.push_back(makeRoute({{-5.40f, 0.22f, 1.55f}, {-5.40f, 0.22f, 2.35f},
+                                {-4.55f, 0.22f, 2.35f}}, PURPLE));
+    routes.push_back(makeRoute({{-4.35f, 0.22f, -1.55f}, {-3.45f, 0.22f, -1.55f},
+                                {-3.45f, 0.22f, 0.75f}}, GREEN));
+    routes.push_back(makeRoute({{2.35f, 0.22f, -3.55f}, {3.55f, 0.22f, -3.55f},
+                                {3.55f, 0.22f, -0.35f}}, GRAY));
+
+    bool layoutEditing = false;
+    int selectedRoute = -1;
+    int selectedRoutePoint = -1;
 
     std::uint64_t lastCycleCount = 0;
     float activityPulse = 0.0f;
@@ -328,33 +392,8 @@ inline int runGUI(const std::string& initialProgram) {
         DrawGrid(18, 1.0f);
 
         const bool energized = session.isRunning() || activityPulse > 0.0f;
-        drawWireRoute({{{-4.8f, 0.22f, -3.9f}, {-4.8f, 0.22f, -3.0f},
-                       {-4.8f, 0.22f, -1.8f}, {-4.8f, 0.22f, -1.8f}}},
-                      3, SKYBLUE, elapsed, energized);
-        drawWireRoute({{{-2.3f, 0.22f, -3.9f}, {-2.3f, 0.22f, -3.0f},
-                       {-2.3f, 0.22f, -1.8f}, {-2.3f, 0.22f, -1.8f}}},
-                      3, SKYBLUE, elapsed, energized);
-        drawWireRoute({{{-3.8f, 0.22f, -1.8f}, {-3.8f, 0.22f, -0.5f},
-                       {-4.8f, 0.22f, 0.6f}, {-4.8f, 0.22f, 0.6f}}},
-                      4, GREEN, elapsed, energized);
-        drawWireRoute({{{-3.8f, 0.22f, 0.6f}, {-3.0f, 0.22f, 0.6f},
-                       {-1.2f, 0.22f, 0.6f}, {-1.2f, 0.22f, 0.6f}}},
-                      4, GOLD, elapsed, energized);
-        drawWireRoute({{{0.2f, 0.22f, 0.6f}, {1.2f, 0.22f, 0.6f},
-                       {2.3f, 0.22f, 0.6f}, {2.3f, 0.22f, 0.6f}}},
-                      4, ORANGE, elapsed, energized);
-        drawWireRoute({{{-4.8f, 0.22f, 1.2f}, {-4.8f, 0.22f, 2.2f},
-                       {-4.8f, 0.22f, 3.3f}, {-4.8f, 0.22f, 3.3f}}},
-                      4, PURPLE, elapsed, energized);
-        drawWireRoute({{{-2.3f, 0.22f, 1.2f}, {-2.3f, 0.22f, 2.2f},
-                       {-2.3f, 0.22f, 3.3f}, {-2.3f, 0.22f, 3.3f}}},
-                      4, PURPLE, elapsed, energized);
-        drawWireRoute({{{-3.6f, 0.22f, 4.0f}, {-3.6f, 0.22f, 4.7f},
-                       {1.2f, 0.22f, 4.7f}, {1.2f, 0.22f, 4.7f}}},
-                      4, GREEN, elapsed, energized);
-        drawWireRoute({{{5.1f, 0.22f, -2.0f}, {5.1f, 0.22f, -1.4f},
-                       {5.1f, 0.22f, 0.6f}, {5.1f, 0.22f, 0.6f}}},
-                      4, GRAY, elapsed, energized);
+        for (const GuiRoute& route : routes)
+            drawWireRoute(route.points, route.count, route.color, elapsed, energized);
 
         const CPURegisters* cpu = session.cpu();
         const MicroCycleEvent& event = session.lastEvent();
@@ -365,6 +404,10 @@ inline int runGUI(const std::string& initialProgram) {
         const std::uint8_t mirC = static_cast<std::uint8_t>((mir >> 19) & 0x1F);
         const bool mirWriteC = ((mir >> 24) & 1) != 0;
         const bool mirUseMbr = ((mir >> 35) & 1) != 0;
+        const bool mirWriteMbr = ((mir >> 28) & 1) != 0;
+        const bool mirWriteMar = ((mir >> 27) & 1) != 0;
+        const bool mirRead = ((mir >> 26) & 1) != 0;
+        const bool mirWrite = ((mir >> 25) & 1) != 0;
 
         const Vector2 mouse = GetMousePosition();
         const Vector2 viewportMouse = {
@@ -379,18 +422,44 @@ inline int runGUI(const std::string& initialProgram) {
         float nearestDistance = 1.0e9f;
 
         for (std::size_t i = 0; i < components.size(); ++i) {
-            const GuiComponent& component = components[i];
+            GuiComponent& component = components[i];
             bool active = false;
             if (activityPulse > 0.0f) {
-                active = component.name == "ALU" || component.name == "Shifter" ||
-                         component.name == "MIR" || component.name == "MPC" ||
-                         component.name == "Control Store";
-                if (component.name == "A Latch" && mirA > 0)
-                    active = true;
-                if (component.name == "B Latch" && mirB > 0)
-                    active = true;
-                if (component.name == "AMUX" && mirUseMbr)
-                    active = true;
+                active = component.name == "ALU" || component.name == "AMUX" ||
+                         component.name == "Shifter" || component.name == "MIR" ||
+                         component.name == "MPC" || component.name == "Control Store";
+
+                const auto isSourceRegister = [&](const std::string& componentName,
+                                                   const char* registerName,
+                                                   std::uint8_t index) {
+                    return componentName == registerName && (mirA == index || mirB == index);
+                };
+
+                active = active ||
+                         isSourceRegister(component.name, "PC", RegisterBank::PC) ||
+                         isSourceRegister(component.name, "AC", RegisterBank::AC) ||
+                         isSourceRegister(component.name, "SP", RegisterBank::SP) ||
+                         isSourceRegister(component.name, "IR", RegisterBank::IR) ||
+                         isSourceRegister(component.name, "TIR", RegisterBank::TIR) ||
+                         isSourceRegister(component.name, "0", RegisterBank::ZERO) ||
+                         isSourceRegister(component.name, "1", RegisterBank::ONE) ||
+                         isSourceRegister(component.name, "-1", RegisterBank::MONE) ||
+                         isSourceRegister(component.name, "AMASK", RegisterBank::AMASK) ||
+                         isSourceRegister(component.name, "SMASK", RegisterBank::SMASK) ||
+                         (component.name == "A Latch" && mirA != RegisterBank::ZERO) ||
+                         (component.name == "B Latch" && mirB != RegisterBank::ZERO);
+
+                if (mirUseMbr)
+                    active = active || component.name == "MBR";
+                if (mirWriteMbr)
+                    active = active || component.name == "MBR";
+                if (mirWriteMar)
+                    active = active || component.name == "MAR";
+                if (mirRead)
+                    active = active || component.name == "MAR" || component.name == "RAM";
+                if (mirWrite)
+                    active = active || component.name == "MBR" || component.name == "RAM";
+
                 if (mirWriteC) {
                     if (mirC == RegisterBank::PC) active = component.name == "PC";
                     if (mirC == RegisterBank::AC) active = component.name == "AC";
@@ -433,10 +502,72 @@ inline int runGUI(const std::string& initialProgram) {
                            selected ? RAYWHITE : Fade(RAYWHITE, 0.42f));
         }
 
-        if (!hoverComponent.empty() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+        if (!hoverComponent.empty() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !layoutEditing)
             selectedComponent = hoverComponent;
 
+        if (layoutEditing && !hoverComponent.empty() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            selectedComponent = hoverComponent;
+            selectedRoute = -1;
+            selectedRoutePoint = -1;
+        }
+
+        if (layoutEditing && IsMouseButtonDown(MOUSE_BUTTON_LEFT) &&
+            (selectedRoute < 0 || selectedRoutePoint < 0) && !hoverComponent.empty()) {
+            const Vector2 delta = GetMouseDelta();
+            for (GuiComponent& component : components) {
+                if (component.name == selectedComponent) {
+                    component.position.x += delta.x * 0.025f;
+                    component.position.z += delta.y * 0.025f;
+                    break;
+                }
+            }
+        }
+
+        if (layoutEditing) {
+            float nearestScreenDistance = 16.0f;
+            for (int routeIndex = 0; routeIndex < static_cast<int>(routes.size()); ++routeIndex) {
+                for (std::size_t pointIndex = 0; pointIndex < routes[routeIndex].count; ++pointIndex) {
+                    const Vector2 screenPoint = GetWorldToScreen(routes[routeIndex].points[pointIndex], camera);
+                    const float distanceToMouse = Vector2Distance(screenPoint, mouse);
+                    if (distanceToMouse < nearestScreenDistance) {
+                        nearestScreenDistance = distanceToMouse;
+                        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                            selectedRoute = routeIndex;
+                            selectedRoutePoint = static_cast<int>(pointIndex);
+                            selectedComponent.clear();
+                        }
+                    }
+                }
+            }
+
+            if (selectedRoute >= 0 && selectedRoutePoint >= 0 &&
+                IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+                const Vector2 delta = GetMouseDelta();
+                Vector3& point = routes[selectedRoute].points[selectedRoutePoint];
+                point.x += delta.x * 0.025f;
+                point.z += delta.y * 0.025f;
+            }
+        }
+
         EndMode3D();
+
+        for (const GuiComponent& component : components) {
+            if (component.name != "ALU")
+                continue;
+
+            const Vector2 aluTop = GetWorldToScreen(
+                Vector3Add(component.position, Vector3{0.0f, component.size.y * 0.52f, 0.0f}),
+                camera);
+            const Vector2 aluLeft = {aluTop.x - 38.0f, aluTop.y - 2.0f};
+            const Vector2 aluRight = {aluTop.x + 38.0f, aluTop.y - 2.0f};
+            const Vector2 aluBottom = {aluTop.x, aluTop.y + 34.0f};
+
+            DrawLineEx(aluLeft, aluBottom, 5.0f, RAYWHITE);
+            DrawLineEx(aluRight, aluBottom, 5.0f, RAYWHITE);
+            DrawText("ALU", static_cast<int>(aluBottom.x) - 14,
+                     static_cast<int>(aluBottom.y) + 8, 12, RAYWHITE);
+            break;
+        }
 
         for (std::size_t i = 0; i < components.size(); ++i) {
             const GuiComponent& component = components[i];
@@ -500,6 +631,17 @@ inline int runGUI(const std::string& initialProgram) {
             DrawText(("Selecionar " + hoverComponent).c_str(),
                      static_cast<int>(viewport.x) + 18,
                      static_cast<int>(viewport.y) + 18, 14, RAYWHITE);
+
+        if (layoutEditing) {
+            DrawRectangleRounded({viewport.x + 18.0f, viewport.y + 38.0f, 410.0f, 48.0f},
+                                 0.12f, 6, Fade(BLACK, 0.88f));
+            DrawText("LAYOUT EDITOR  F2 exit  F3 copy",
+                     static_cast<int>(viewport.x) + 32,
+                     static_cast<int>(viewport.y) + 48, 13, GOLD);
+            DrawText("Drag components or wire points; arrows nudge",
+                     static_cast<int>(viewport.x) + 32,
+                     static_cast<int>(viewport.y) + 68, 12, RAYWHITE);
+        }
 
         const Rectangle inspector = {1022.0f, 66.0f, 234.0f, 590.0f};
         roundedPanel(inspector, Color{22, 28, 36, 255});
