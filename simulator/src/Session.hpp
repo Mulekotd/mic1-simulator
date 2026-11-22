@@ -24,6 +24,7 @@ public:
 
         history.clear();
         output.clear();
+        lastEventState = {};
 
         running = false;
     }
@@ -46,6 +47,7 @@ public:
 
         try {
             const auto event = machine->step();
+            lastEventState = event;
 
             if (event.integerOutput) {
                 const std::int64_t signedValue = event.output <= 0x7FFFFFFFu
@@ -88,6 +90,8 @@ public:
     const std::string& path() const { return program; }
     const std::vector<std::string>& outputs() const { return output; }
     const CPURegisters* cpu() const { return machine ? &machine->cpu() : nullptr; }
+    const RAM* memory() const { return isLoaded() ? &ram : nullptr; }
+    const MicroCycleEvent& lastEvent() const { return lastEventState; }
 
 private:
     struct History {
@@ -104,6 +108,7 @@ private:
         machine->restore(history.back().machine);
         output.resize(history.back().outputCount);
         history.pop_back();
+        lastEventState = {};
 
         return true;
     }
@@ -113,6 +118,7 @@ private:
     std::string program;
     std::deque<History> history;
     std::vector<std::string> output;
+    MicroCycleEvent lastEventState;
 
     bool running = false;
 };
