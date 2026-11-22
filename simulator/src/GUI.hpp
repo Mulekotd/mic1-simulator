@@ -223,6 +223,8 @@ inline int runGUI(const std::string& initialProgram) {
     bool boardModelLoaded = false;
     Vector3 boardModelPosition = {};
     float boardModelScale = 1.0f;
+    Texture2D boardTexture{};
+    bool boardTextureLoaded = false;
 
     const char* boardModelPath = FileExists("/models/mic1board.glb")
         ? "/models/mic1board.glb"
@@ -243,6 +245,24 @@ inline int runGUI(const std::string& initialProgram) {
 
         std::cout << "Loaded GLB: " << boardModelPath << ", meshes=" << boardModel.meshCount
                   << ", scale=" << boardModelScale << std::endl;
+
+        const char* boardTexturePath = FileExists("/models/green_board.png")
+            ? "/models/green_board.png"
+            : "models/green_board.png";
+        boardTexture = LoadTexture(boardTexturePath);
+        if (boardTexture.id != 0 && boardModel.materialCount > 0) {
+            boardTextureLoaded = true;
+            boardModel.materials[0].maps[MATERIAL_MAP_ALBEDO].texture = boardTexture;
+            std::cout << "Loaded board texture: " << boardTexturePath
+                      << ", " << boardTexture.width << "x" << boardTexture.height << std::endl;
+        }
+
+        std::cout << "GLB materials=" << boardModel.materialCount << std::endl;
+        for (int materialIndex = 0; materialIndex < boardModel.materialCount; ++materialIndex) {
+            const Texture2D& albedo = boardModel.materials[materialIndex].maps[MATERIAL_MAP_ALBEDO].texture;
+            std::cout << "  material " << materialIndex << ": textureId=" << albedo.id
+                      << ", size=" << albedo.width << "x" << albedo.height << std::endl;
+        }
     } else {
         boardModel = {};
         message = "GLB not found; using fallback schematic";
@@ -808,6 +828,8 @@ inline int runGUI(const std::string& initialProgram) {
         EndDrawing();
     }
 
+    if (boardTextureLoaded)
+        UnloadTexture(boardTexture);
     if (boardModelLoaded)
         UnloadModel(boardModel);
 
