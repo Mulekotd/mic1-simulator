@@ -15,6 +15,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <fstream>
+#include <regex>
 #include <vector>
 
 namespace {
@@ -38,6 +40,101 @@ struct GuiRoute {
     std::size_t count = 4;
     Color color = GRAY;
 };
+
+struct ModelComponent {
+    std::string name;
+    Vector3 position;
+    Vector3 size;
+    int hitboxMeshIndex = -1;
+};
+
+struct GlbHitbox {
+    std::string name;
+    int meshIndex = -1;
+    Vector3 position{};
+    Vector3 scale{1.0f, 1.0f, 1.0f};
+};
+
+bool readGlbHitboxes(const char* path, std::vector<GlbHitbox>& hitboxes) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+        return false;
+
+    std::uint32_t magic = 0, version = 0, length = 0;
+    file.read(reinterpret_cast<char*>(&magic), 4);
+    file.read(reinterpret_cast<char*>(&version), 4);
+    file.read(reinterpret_cast<char*>(&length), 4);
+    if (magic != 0x46546C67)
+        return false;
+
+    std::uint32_t chunkLength = 0, chunkType = 0;
+    file.read(reinterpret_cast<char*>(&chunkLength), 4);
+    file.read(reinterpret_cast<char*>(&chunkType), 4);
+    if (chunkType != 0x4E4F534A)
+        return false;
+
+    std::string json(chunkLength, '\0');
+    file.read(json.data(), chunkLength);
+
+    const std::regex nameRegex("\"name\"\\s*:\\s*\"([^\"]+)\"");
+    for (std::sregex_iterator match(json.begin(), json.end(), nameRegex),
+         end; match != end; ++match) {
+        const std::string name = (*match)[1].str();
+        if (name.find("_HITBOX") == std::string::npos)
+            continue;
+
+        const std::size_t namePosition = static_cast<std::size_t>(match->position());
+        const std::size_t objectStart = json.rfind('{', namePosition);
+        const std::size_t objectEnd = json.find('}', namePosition);
+        if (objectStart == std::string::npos || objectEnd == std::string::npos)
+            continue;
+
+        const std::string object = json.substr(objectStart, objectEnd - objectStart + 1);
+
+        GlbHitbox hitbox;
+        hitbox.name = name.substr(0, name.size() - 7);
+        if (hitbox.name == "+1") hitbox.name = "ONE";
+        if (hitbox.name == "-1") hitbox.name = "MONE";
+        if (hitbox.name == "0") hitbox.name = "ZERO";
+        if (hitbox.name == "A") hitbox.name = "REGISTER_A";
+        if (hitbox.name == "B") hitbox.name = "REGISTER_B";
+        if (hitbox.name == "C") hitbox.name = "REGISTER_C";
+        if (hitbox.name == "D") hitbox.name = "REGISTER_D";
+        if (hitbox.name == "E") hitbox.name = "REGISTER_E";
+        if (hitbox.name == "F") hitbox.name = "REGISTER_F";
+        if (hitbox.name == "CHIMPS_LOGO") hitbox.name.clear();
+
+        std::regex meshRegex("\"mesh\"\\s*:\\s*(\\d+)");
+        std::smatch meshMatch;
+        if (std::regex_search(object, meshMatch, meshRegex))
+            hitbox.meshIndex = std::stoi(meshMatch[1].str());
+
+        std::regex translationRegex("\"translation\"\\s*:\\s*\\[\\s*([^,\\]]+),\\s*([^,\\]]+),\\s*([^\\]]+)\\]");
+        std::smatch translationMatch;
+        if (std::regex_search(object, translationMatch, translationRegex)) {
+            hitbox.position = {
+                std::stof(translationMatch[1].str()),
+                std::stof(translationMatch[2].str()),
+                std::stof(translationMatch[3].str())
+            };
+        }
+
+        std::regex scaleRegex("\"scale\"\\s*:\\s*\\[\\s*([^,\\]]+),\\s*([^,\\]]+),\\s*([^\\]]+)\\]");
+        std::smatch scaleMatch;
+        if (std::regex_search(object, scaleMatch, scaleRegex)) {
+            hitbox.scale = {
+                std::stof(scaleMatch[1].str()),
+                std::stof(scaleMatch[2].str()),
+                std::stof(scaleMatch[3].str())
+            };
+        }
+
+        if (hitbox.meshIndex >= 0)
+            hitboxes.push_back(hitbox);
+    }
+
+    return true;
+}
 
 std::string hex32(std::uint32_t value) {
     std::ostringstream output;
@@ -194,7 +291,7 @@ inline int runGUI(const std::string& initialProgram) {
     Session session;
     std::string message;
     std::string pathInput;
-    std::string selectedComponent = "Register Bank";
+    std::string selectedComponent;
     bool editingPath = false;
     GuiTab tab = GuiTab::Components;
 
@@ -218,13 +315,14 @@ inline int runGUI(const std::string& initialProgram) {
     camera.up = {0.0f, 1.0f, 0.0f};
     camera.fovy = 42.0f;
     camera.projection = CAMERA_PERSPECTIVE;
+    bool inspectingComponent = false;
+    Vector3 inspectTarget = camera.target;
 
     Model boardModel{};
     bool boardModelLoaded = false;
     Vector3 boardModelPosition = {};
     float boardModelScale = 1.0f;
-    Texture2D boardTexture{};
-    bool boardTextureLoaded = false;
+    std::vector<ModelComponent> modelComponents;
 
     const char* boardModelPath = FileExists("/models/mic1board.glb")
         ? "/models/mic1board.glb"
@@ -242,19 +340,162 @@ inline int runGUI(const std::string& initialProgram) {
             boardModelScale = 12.0f / largestSize;
 
         boardModelPosition = Vector3Scale(modelCenter, -boardModelScale);
+        boardModelPosition.y += 0.35f;
 
         std::cout << "Loaded GLB: " << boardModelPath << ", meshes=" << boardModel.meshCount
                   << ", scale=" << boardModelScale << std::endl;
 
-        const char* boardTexturePath = FileExists("/models/green_board.png")
-            ? "/models/green_board.png"
-            : "models/green_board.png";
-        boardTexture = LoadTexture(boardTexturePath);
-        if (boardTexture.id != 0 && boardModel.materialCount > 0) {
-            boardTextureLoaded = true;
-            boardModel.materials[0].maps[MATERIAL_MAP_ALBEDO].texture = boardTexture;
-            std::cout << "Loaded board texture: " << boardTexturePath
-                      << ", " << boardTexture.width << "x" << boardTexture.height << std::endl;
+        const auto modelPoint = [&](float x, float y, float z) {
+            return Vector3{
+                x * boardModelScale + boardModelPosition.x,
+                y * boardModelScale + boardModelPosition.y,
+                z * boardModelScale + boardModelPosition.z
+            };
+        };
+
+        const std::array<float, 3> noParentSize = {0.75f, 0.55f, 0.75f};
+        const auto addComponent = [&](const char* name, float x, float y, float z,
+                                      Vector3 size = {0.75f, 0.55f, 0.75f}) {
+            modelComponents.push_back({name, modelPoint(x, y, z), size});
+        };
+
+        addComponent("REGISTER_BANK", -0.09078f, 0.00322f, -0.25607f);
+        addComponent("PC", -0.09214f, -0.00009f, -0.20958f);
+        addComponent("AC", -0.04643f, -0.00009f, -0.20958f);
+        addComponent("SP", -0.00071f, -0.00009f, -0.20958f);
+        addComponent("IR", 0.04501f, -0.00009f, -0.20958f);
+        addComponent("TIR", -0.09214f, -0.00009f, -0.08125f);
+        addComponent("ZERO", -0.04643f, -0.00009f, -0.08125f);
+        addComponent("ONE", -0.00071f, -0.00009f, -0.08125f);
+        addComponent("MONE", 0.04501f, -0.00009f, -0.08125f);
+        addComponent("AMASK", -0.09214f, -0.00009f, 0.04709f);
+        addComponent("SMASK", -0.04643f, -0.00009f, 0.04709f);
+        addComponent("REGISTER_A", -0.00071f, -0.00009f, 0.04709f);
+        addComponent("REGISTER_B", 0.04501f, -0.00009f, 0.04709f);
+        addComponent("REGISTER_C", -0.09214f, -0.00009f, 0.17542f);
+        addComponent("REGISTER_D", -0.04643f, -0.00009f, 0.17542f);
+        addComponent("REGISTER_E", -0.00071f, -0.00009f, 0.17542f);
+        addComponent("REGISTER_F", 0.04501f, -0.00009f, 0.17542f);
+        addComponent("A_DECODER", -0.03627f, 0.00167f, -0.59602f);
+        addComponent("B_DECODER", -0.03627f, 0.00167f, -0.66797f);
+        addComponent("C_DECODER", -0.03450f, 0.00166f, -0.74107f);
+        addComponent("A_LATCH", 0.04500f, 0.00283f, 0.07984f);
+        addComponent("B_LATCH", 0.18602f, 0.00274f, 0.07912f);
+        addComponent("AMUX", 0.02599f, 0.00306f, 0.30806f);
+        addComponent("ALU", 0.12066f, 0.00322f, 0.47638f);
+        addComponent("SHIFTER", 0.12059f, 0.00404f, 0.61321f);
+        addComponent("MAR", -0.10102f, 0.00166f, 0.15970f);
+        addComponent("MBR", -0.11032f, 0.00272f, 0.34622f);
+        addComponent("RAM", -0.75411f, 0.02782f, 0.24327f);
+        addComponent("CACHE", -0.19781f, 0.00196f, 0.26469f);
+        addComponent("CLOCK", 0.34073f, 0.01130f, -0.21741f);
+        addComponent("MMUX", 0.46356f, 0.00291f, -0.08844f);
+        addComponent("MPC", 0.46353f, 0.00454f, -0.04069f);
+        addComponent("MIR", 0.34985f, 0.00279f, 0.07990f);
+        addComponent("INCREMENTER", 0.34151f, 0.00267f, -0.08453f);
+        addComponent("CONTROL_STORE", 0.37086f, 0.00293f, 0.02264f);
+
+        struct ComponentMeshInfo {
+            const char* name;
+            int meshIndex;
+            float x;
+            float y;
+            float z;
+        };
+        const ComponentMeshInfo componentMeshes[] = {
+            {"REGISTER_BANK", 63, -0.09078f, 0.00322f, -0.25607f},
+            {"A_DECODER", 64, -0.03627f, 0.00167f, -0.59602f},
+            {"B_DECODER", 72, -0.03627f, 0.00167f, -0.66797f},
+            {"C_DECODER", 71, -0.03450f, 0.00166f, -0.74107f},
+            {"A_LATCH", 1, 0.04500f, 0.00283f, 0.07984f},
+            {"B_LATCH", 2, 0.18602f, 0.00274f, 0.07912f},
+            {"AMUX", 3, 0.02599f, 0.00306f, 0.30806f},
+            {"MAR", 4, -0.10102f, 0.00166f, 0.15970f},
+            {"ALU", 5, 0.12066f, 0.00322f, 0.47638f},
+            {"SHIFTER", 6, 0.12059f, 0.00404f, 0.61321f},
+            {"RAM", 7, -0.75411f, 0.02782f, 0.24327f},
+            {"MBR", 8, -0.11032f, 0.00272f, 0.34622f},
+            {"CLOCK", 9, 0.39265f, 0.01223f, -0.36357f},
+            {"MMUX", 10, 0.46356f, 0.00291f, -0.08844f},
+            {"MPC", 11, 0.46353f, 0.00454f, -0.04069f},
+            {"MIR", 12, 0.34985f, 0.00279f, 0.07990f},
+            {"INCREMENTER", 13, 0.34151f, 0.00267f, -0.08453f},
+            {"CONTROL_STORE", 14, 0.37086f, 0.00293f, 0.02264f},
+            {"CACHE", 15, -0.19781f, 0.00196f, 0.26469f},
+            {"PC", 55, -0.09214f, -0.00009f, -0.20958f},
+            {"AC", 45, -0.04643f, -0.00009f, -0.20958f},
+            {"SP", 60, -0.00071f, -0.00009f, -0.20958f},
+            {"IR", 54, 0.04501f, -0.00009f, -0.20958f},
+            {"TIR", 61, -0.09214f, -0.00009f, -0.08125f},
+            {"ZERO", 43, -0.04643f, -0.00009f, -0.08125f},
+            {"ONE", 41, -0.00071f, -0.00009f, -0.08125f},
+            {"MONE", 42, 0.04501f, -0.00009f, -0.08125f},
+            {"AMASK", 46, -0.09214f, -0.00009f, 0.04709f},
+            {"SMASK", 59, -0.04643f, -0.00009f, 0.04709f},
+            {"REGISTER_A", 44, -0.00071f, -0.00009f, 0.04709f},
+            {"REGISTER_B", 48, 0.04501f, -0.00009f, 0.04709f},
+            {"REGISTER_C", 49, -0.09214f, -0.00009f, 0.17542f},
+            {"REGISTER_D", 51, -0.04643f, -0.00009f, 0.17542f},
+            {"REGISTER_E", 52, -0.00071f, -0.00009f, 0.17542f},
+            {"REGISTER_F", 53, 0.04501f, -0.00009f, 0.17542f}
+        };
+
+        for (ModelComponent& component : modelComponents) {
+            for (const ComponentMeshInfo& info : componentMeshes) {
+                if (component.name != info.name)
+                    continue;
+
+                if (info.meshIndex >= 0 && info.meshIndex < boardModel.meshCount) {
+                    const BoundingBox bounds = GetMeshBoundingBox(boardModel.meshes[info.meshIndex]);
+                    const Vector3 center = Vector3Scale(Vector3Add(bounds.min, bounds.max), 0.5f);
+                    const Vector3 size = Vector3Subtract(bounds.max, bounds.min);
+
+                    component.position = modelPoint(info.x + center.x,
+                                                    info.y + center.y,
+                                                    info.z + center.z);
+                    component.size = Vector3Scale(size, boardModelScale);
+                    if (component.size.x < 0.25f) component.size.x = 0.25f;
+                    if (component.size.y < 0.25f) component.size.y = 0.25f;
+                    if (component.size.z < 0.25f) component.size.z = 0.25f;
+                }
+                break;
+            }
+        }
+
+        modelComponents.clear();
+        std::vector<GlbHitbox> hitboxes;
+        if (readGlbHitboxes(boardModelPath, hitboxes)) {
+            for (const GlbHitbox& hitbox : hitboxes) {
+                if (hitbox.name.empty() ||
+                    hitbox.meshIndex < 0 ||
+                    hitbox.meshIndex >= boardModel.meshCount)
+                    continue;
+
+                Vector3 size = {
+                    hitbox.scale.x * 2.0f * boardModelScale,
+                    hitbox.scale.y * 2.0f * boardModelScale,
+                    hitbox.scale.z * 2.0f * boardModelScale
+                };
+
+                const bool registerAxis =
+                    hitbox.name == "PC" || hitbox.name == "AC" || hitbox.name == "SP" ||
+                    hitbox.name == "IR" || hitbox.name == "TIR" || hitbox.name == "ZERO" ||
+                    hitbox.name == "ONE" || hitbox.name == "MONE" || hitbox.name == "AMASK" ||
+                    hitbox.name == "SMASK" || hitbox.name == "A" || hitbox.name == "B" ||
+                    hitbox.name == "C" || hitbox.name == "D" || hitbox.name == "E" ||
+                    hitbox.name == "F" || hitbox.name == "REGISTER_A" ||
+                    hitbox.name == "REGISTER_B" || hitbox.name == "REGISTER_C" ||
+                    hitbox.name == "REGISTER_D" || hitbox.name == "REGISTER_E" ||
+                    hitbox.name == "REGISTER_F";
+                if (!registerAxis)
+                    std::swap(size.x, size.z);
+
+                const Vector3 position = modelPoint(hitbox.position.x,
+                                                    hitbox.position.y,
+                                                    hitbox.position.z);
+                modelComponents.push_back({hitbox.name, position, size, hitbox.meshIndex});
+            }
+            std::cout << "Loaded GLB hitboxes=" << hitboxes.size() << std::endl;
         }
 
         std::cout << "GLB materials=" << boardModel.materialCount << std::endl;
@@ -276,6 +517,9 @@ inline int runGUI(const std::string& initialProgram) {
         yaw = 0.55f;
         pitch = 0.48f;
         distance = 20.0f;
+        inspectTarget = {0.0f, 0.2f, 0.0f};
+        inspectingComponent = false;
+        selectedComponent.clear();
     };
 
     std::vector<GuiComponent> components = {{
@@ -410,7 +654,13 @@ inline int runGUI(const std::string& initialProgram) {
         }
 
         distance -= GetMouseWheelMove() * 1.2f;
-        distance = std::clamp(distance, 9.0f, 28.0f);
+        distance = inspectingComponent
+            ? std::clamp(distance, 5.0f, 28.0f)
+            : std::clamp(distance, 9.0f, 28.0f);
+        if (inspectingComponent) {
+            camera.target = Vector3Lerp(camera.target, inspectTarget, std::min(1.0f, frameTime * 3.5f));
+            distance = std::clamp(distance, 5.0f, 28.0f);
+        }
 
         camera.position = {
             camera.target.x + distance * std::cos(pitch) * std::sin(yaw),
@@ -437,21 +687,8 @@ inline int runGUI(const std::string& initialProgram) {
         const Rectangle viewport = {250.0f, 66.0f, 760.0f, 590.0f};
         roundedPanel(viewport, Color{18, 23, 31, 255});
 
-        BeginMode3D(camera);
-        DrawGrid(18, 1.0f);
-
-        const bool energized = session.isRunning() || activityPulse > 0.0f;
-        if (boardModelLoaded) {
-            DrawModelEx(boardModel, boardModelPosition, {0.0f, 1.0f, 0.0f},
-                        0.0f, {boardModelScale, boardModelScale, boardModelScale}, WHITE);
-        } else {
-            for (const GuiRoute& route : routes)
-                drawWireRoute(route.points, route.count, route.color, elapsed, energized);
-        }
-
         const CPURegisters* cpu = session.cpu();
         const MicroCycleEvent& event = session.lastEvent();
-
         std::uint64_t mir = cpu ? cpu->mir.read() : 0;
         const std::uint8_t mirA = static_cast<std::uint8_t>((mir >> 9) & 0x1F);
         const std::uint8_t mirB = static_cast<std::uint8_t>((mir >> 14) & 0x1F);
@@ -463,17 +700,106 @@ inline int runGUI(const std::string& initialProgram) {
         const bool mirRead = ((mir >> 26) & 1) != 0;
         const bool mirWrite = ((mir >> 25) & 1) != 0;
 
+        BeginScissorMode(static_cast<int>(viewport.x), static_cast<int>(viewport.y),
+                         static_cast<int>(viewport.width), static_cast<int>(viewport.height));
+        BeginMode3D(camera);
+        // The GLB board replaces the procedural grid.
+
+        const bool energized = session.isRunning() || activityPulse > 0.0f;
+        if (boardModelLoaded) {
+            DrawModelEx(boardModel, boardModelPosition, {0.0f, 1.0f, 0.0f},
+                        0.0f, {boardModelScale, boardModelScale, boardModelScale}, WHITE);
+
+            for (std::size_t i = 0; i < modelComponents.size(); ++i) {
+                const ModelComponent& component = modelComponents[i];
+                bool active = false;
+
+                if (activityPulse > 0.0f) {
+                    active = component.name == "ALU" || component.name == "SHIFTER" ||
+                             component.name == "AMUX" || component.name == "MIR" ||
+                             component.name == "MPC" || component.name == "CONTROL_STORE";
+
+                    if (component.name == "A_LATCH" && mirA != RegisterBank::ZERO)
+                        active = true;
+                    if (component.name == "B_LATCH" && mirB != RegisterBank::ZERO)
+                        active = true;
+                    if (component.name == "MAR" && mirWriteMar)
+                        active = true;
+                    if (component.name == "MBR" && (mirWriteMbr || mirUseMbr))
+                        active = true;
+                    if ((component.name == "RAM" || component.name == "CACHE") && (mirRead || mirWrite))
+                        active = true;
+                    if (mirWriteC) {
+                        if (mirC == RegisterBank::PC) active = component.name == "PC";
+                        if (mirC == RegisterBank::AC) active = component.name == "AC";
+                        if (mirC == RegisterBank::SP) active = component.name == "SP";
+                        if (mirC == RegisterBank::IR) active = component.name == "IR";
+                        if (mirC == RegisterBank::TIR) active = component.name == "TIR";
+                        if (mirC == RegisterBank::ZERO) active = component.name == "ZERO";
+                        if (mirC == RegisterBank::ONE) active = component.name == "ONE";
+                        if (mirC == RegisterBank::MONE) active = component.name == "MONE";
+                        if (mirC == RegisterBank::AMASK) active = component.name == "AMASK";
+                        if (mirC == RegisterBank::SMASK) active = component.name == "SMASK";
+                    }
+                }
+
+                if (active) {
+                    Vector3 position = component.position;
+                    position.x += std::sin(elapsed * 95.0f + i) * 0.025f;
+                    position.y += std::cos(elapsed * 83.0f + i) * 0.018f;
+                    DrawCubeWiresV(position, Vector3Scale(component.size, 1.08f), GOLD);
+                }
+            }
+        } else {
+            for (const GuiRoute& route : routes)
+                drawWireRoute(route.points, route.count, route.color, elapsed, energized);
+        }
+
         const Vector2 mouse = GetMousePosition();
-        const Vector2 viewportMouse = {
-            mouse.x - viewport.x,
-            mouse.y - viewport.y
-        };
-        Ray ray = GetScreenToWorldRayEx(viewportMouse, camera,
-                                        static_cast<int>(viewport.width),
-                                        static_cast<int>(viewport.height));
+        Ray ray = GetScreenToWorldRay(mouse, camera);
         const bool mouseInViewport = pointInRectangle(mouse, viewport);
         std::string hoverComponent;
         float nearestDistance = 1.0e9f;
+
+        if (boardModelLoaded && mouseInViewport) {
+            for (const ModelComponent& component : modelComponents) {
+                const Vector3 minimum = Vector3Subtract(component.position,
+                                                         Vector3Scale(component.size, 0.5f));
+                const Vector3 maximum = Vector3Add(component.position,
+                                                   Vector3Scale(component.size, 0.5f));
+                const RayCollision collision = GetRayCollisionBox(
+                    ray, {minimum.x, minimum.y, minimum.z, maximum.x, maximum.y, maximum.z});
+
+                if (collision.hit && collision.distance < nearestDistance) {
+                    nearestDistance = collision.distance;
+                    hoverComponent = component.name;
+                }
+            }
+
+            if (!hoverComponent.empty() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                selectedComponent = hoverComponent;
+                inspectingComponent = true;
+
+                for (const ModelComponent& component : modelComponents) {
+                    if (component.name == selectedComponent) {
+                        inspectTarget = component.position;
+                        break;
+                    }
+                }
+                distance = std::min(distance, 5.5f);
+            }
+
+            if (!hoverComponent.empty()) {
+                for (const ModelComponent& component : modelComponents) {
+                    if (component.name == hoverComponent) {
+                        DrawCubeWiresV(component.position,
+                                       Vector3Scale(component.size, 1.10f),
+                                       GOLD);
+                        break;
+                    }
+                }
+            }
+        }
 
         if (!boardModelLoaded) for (std::size_t i = 0; i < components.size(); ++i) {
             GuiComponent& component = components[i];
@@ -605,6 +931,35 @@ inline int runGUI(const std::string& initialProgram) {
 
         EndMode3D();
 
+        if (boardModelLoaded) {
+            for (const ModelComponent& component : modelComponents) {
+                if (component.name != hoverComponent)
+                    continue;
+
+                Vector2 labelPosition = GetWorldToScreen(
+                    Vector3Add(component.position, {0.0f, component.size.y * 0.75f, 0.0f}),
+                    camera);
+                if (labelPosition.x < viewport.x || labelPosition.x > viewport.x + viewport.width ||
+                    labelPosition.y < viewport.y || labelPosition.y > viewport.y + viewport.height)
+                    continue;
+
+                const int width = MeasureText(component.name.c_str(), 12) + 14;
+                const Rectangle label = {
+                    labelPosition.x - width * 0.5f,
+                    labelPosition.y - 12.0f,
+                    static_cast<float>(width),
+                    24.0f
+                };
+                DrawRectangleRounded(label, 0.20f, 5, Fade(BLACK, 0.88f));
+                DrawText(component.name.c_str(),
+                         static_cast<int>(label.x) + 7,
+                         static_cast<int>(label.y) + 6,
+                         12, RAYWHITE);
+            }
+        }
+
+        EndScissorMode();
+
         if (!boardModelLoaded) for (const GuiComponent& component : components) {
             if (component.name != "ALU")
                 continue;
@@ -702,24 +1057,127 @@ inline int runGUI(const std::string& initialProgram) {
 
         if (tab == GuiTab::Components) {
             DrawText("Component", static_cast<int>(inspector.x) + 14, static_cast<int>(inspector.y) + 42, 16, RAYWHITE);
-            DrawText(selectedComponent.c_str(), static_cast<int>(inspector.x) + 14,
-                     static_cast<int>(inspector.y) + 68, 20, SKYBLUE);
+            DrawText(selectedComponent.empty() ? "None selected" : selectedComponent.c_str(),
+                     static_cast<int>(inspector.x) + 14,
+                     static_cast<int>(inspector.y) + 68, 20,
+                     selectedComponent.empty() ? LIGHTGRAY : SKYBLUE);
 
             int y = static_cast<int>(inspector.y) + 112;
-            if (cpu) {
-                drawStatusDot(static_cast<int>(inspector.x) + 18, y + 7, activityPulse > 0.0f, SKYBLUE);
+            if (selectedComponent.empty()) {
+                DrawText("Click a component to inspect it.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
+            } else if (cpu) {
+                drawStatusDot(static_cast<int>(inspector.x) + 18, y + 7,
+                              activityPulse > 0.0f, GOLD);
                 drawTextRow("State", session.isRunning() ? "Running" : session.isHalted() ? "HALT" : "Paused",
                             static_cast<int>(inspector.x) + 34, y);
-                drawTextRow("PC", hex32(cpu->bank.read(RegisterBank::PC)),
-                            static_cast<int>(inspector.x) + 34, y);
-                drawTextRow("AC", hex32(cpu->bank.read(RegisterBank::AC)),
-                            static_cast<int>(inspector.x) + 34, y);
-                drawTextRow("SP", hex32(cpu->bank.read(RegisterBank::SP)),
-                            static_cast<int>(inspector.x) + 34, y);
-                drawTextRow("MPC", std::to_string(cpu->mpc),
-                            static_cast<int>(inspector.x) + 34, y);
-                drawTextRow("N / Z", std::string(cpu->n ? "1 " : "0 ") + (cpu->z ? "/ 1" : "/ 0"),
-                            static_cast<int>(inspector.x) + 34, y);
+
+                if (selectedComponent == "PC")
+                    drawTextRow("Value", hex32(cpu->bank.read(RegisterBank::PC)),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "AC")
+                    drawTextRow("Value", hex32(cpu->bank.read(RegisterBank::AC)),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "SP")
+                    drawTextRow("Value", hex32(cpu->bank.read(RegisterBank::SP)),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "IR")
+                    drawTextRow("Value", hex32(cpu->bank.read(RegisterBank::IR)),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "TIR")
+                    drawTextRow("Value", hex32(cpu->bank.read(RegisterBank::TIR)),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "ZERO")
+                    drawTextRow("Value", "0x00000000",
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "ONE")
+                    drawTextRow("Value", "0x00000001",
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "MONE")
+                    drawTextRow("Value", "0xFFFFFFFF",
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "AMASK")
+                    drawTextRow("Value", "0x00000FFF",
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "SMASK")
+                    drawTextRow("Value", "0x000000FF",
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "REGISTER_A")
+                    drawTextRow("Value", hex32(cpu->bank.read(10)),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "REGISTER_B")
+                    drawTextRow("Value", hex32(cpu->bank.read(11)),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "REGISTER_C")
+                    drawTextRow("Value", hex32(cpu->bank.read(12)),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "REGISTER_D")
+                    drawTextRow("Value", hex32(cpu->bank.read(13)),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "REGISTER_E")
+                    drawTextRow("Value", hex32(cpu->bank.read(14)),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "REGISTER_F")
+                    drawTextRow("Value", hex32(cpu->bank.read(15)),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "REGISTER_BANK")
+                    drawTextRow("Registers", "32 x 32-bit",
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "A_DECODER")
+                    drawTextRow("A index", std::to_string(mirA),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "B_DECODER")
+                    drawTextRow("B index", std::to_string(mirB),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "C_DECODER")
+                    drawTextRow("C index", std::to_string(mirC),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "A_LATCH")
+                    drawTextRow("Value", hex32(cpu->a.read()),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "B_LATCH")
+                    drawTextRow("Value", hex32(cpu->b.read()),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "MAR")
+                    drawTextRow("Address", hex32(cpu->mar.read()),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "MBR")
+                    drawTextRow("Value", hex32(cpu->mbr.read()),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "MIR")
+                    drawTextRow("Word", hex36(cpu->mir.read()),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "MPC")
+                    drawTextRow("Address", std::to_string(cpu->mpc),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "ALU")
+                    drawTextRow("N / Z", std::string(cpu->n ? "1 " : "0 ") + (cpu->z ? "/ 1" : "/ 0"),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "AMUX")
+                    drawTextRow("Select", mirUseMbr ? "MBR" : "A latch",
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "SHIFTER")
+                    drawTextRow("Mode", std::to_string((event.word >> 29) & 3),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "MMUX")
+                    drawTextRow("Condition", std::to_string((event.word >> 33) & 3),
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "CONTROL_STORE")
+                    drawTextRow("Size", "256 x 36",
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "INCREMENTER")
+                    drawTextRow("Operation", "PC/SP + 1",
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "RAM")
+                    drawTextRow("Words", "4096",
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "CACHE")
+                    drawTextRow("Status", "Not implemented",
+                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "CLOCK")
+                    drawTextRow("Subcycles", std::to_string(session.cycles()),
+                                static_cast<int>(inspector.x) + 34, y);
+                else
+                    DrawText("No live value mapped.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
             } else {
                 DrawText("Load a program to inspect state.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
             }
@@ -828,8 +1286,6 @@ inline int runGUI(const std::string& initialProgram) {
         EndDrawing();
     }
 
-    if (boardTextureLoaded)
-        UnloadTexture(boardTexture);
     if (boardModelLoaded)
         UnloadModel(boardModel);
 
