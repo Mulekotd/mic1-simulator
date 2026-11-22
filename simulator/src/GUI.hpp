@@ -13,8 +13,11 @@
 #include <iomanip>
 #include <initializer_list>
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <fstream>
 #include <regex>
 #include <vector>
@@ -25,6 +28,7 @@ enum class GuiTab : int {
     Components = 0,
     Execution,
     Info,
+    Debugger,
     Controls
 };
 
@@ -56,6 +60,13 @@ struct ModelComponent {
     Vector3 position;
     Vector3 size;
     int hitboxMeshIndex = -1;
+};
+
+struct ListingLine {
+    std::uint32_t address = 0;
+    std::uint32_t word = 0;
+    std::uint32_t sourceLine = 0;
+    std::string source;
 };
 
 struct GlbHitbox {
@@ -144,6 +155,45 @@ bool readGlbHitboxes(const char* path, std::vector<GlbHitbox>& hitboxes) {
     }
 
     return true;
+}
+
+std::vector<ListingLine> readListing(const std::string& programPath) {
+    std::vector<ListingLine> lines;
+    std::filesystem::path listingPath(programPath);
+    listingPath.replace_extension(".lst");
+
+    std::ifstream file(listingPath);
+    if (!file)
+        return lines;
+
+    std::string line;
+    std::getline(file, line);
+
+    while (std::getline(file, line)) {
+        std::istringstream input(line);
+        std::string addressText, wordText;
+        ListingLine listing;
+
+        if (!(input >> addressText >> wordText >> listing.sourceLine))
+            continue;
+
+        try {
+            listing.address = static_cast<std::uint32_t>(std::stoul(addressText, nullptr, 16));
+            listing.word = static_cast<std::uint32_t>(std::stoul(wordText, nullptr, 16));
+        } catch (...) {
+            continue;
+        }
+
+        std::getline(input, listing.source);
+        if (!listing.source.empty() && listing.source.front() == ' ')
+            listing.source.erase(0, 1);
+        const std::size_t sourceStart = listing.source.find_first_not_of(" ");
+        if (sourceStart != std::string::npos)
+            listing.source.erase(0, sourceStart);
+        lines.push_back(listing);
+    }
+
+    return lines;
 }
 
 std::string hex32(std::uint32_t value) {
@@ -304,6 +354,15 @@ inline int runGUI(const std::string& initialProgram) {
     std::string selectedComponent;
     bool editingPath = false;
     GuiTab tab = GuiTab::Components;
+    std::string listingSourcePath;
+    std::vector<ListingLine> listingLines;
+
+    const auto refreshListing = [&]() {
+        if (listingSourcePath == session.path())
+            return;
+        listingSourcePath = session.path();
+        listingLines = readListing(session.path());
+    };
 
     if (!initialProgram.empty()) {
         try {
@@ -313,6 +372,7 @@ inline int runGUI(const std::string& initialProgram) {
             message = error.what();
         }
     }
+    refreshListing();
 
     InitWindow(1280, 720, "MIC-1 3D Simulator");
     SetWindowMinSize(960, 600);
@@ -622,6 +682,7 @@ inline int runGUI(const std::string& initialProgram) {
 
     while (!WindowShouldClose()) {
         const float frameTime = GetFrameTime();
+        refreshListing();
         elapsed += frameTime;
         activityPulse = std::max(0.0f, activityPulse - frameTime);
         hoverCooldown = std::max(0.0f, hoverCooldown - frameTime);
@@ -642,6 +703,7 @@ inline int runGUI(const std::string& initialProgram) {
                     editingPath = false;
                     message = "Programa carregado";
                     playSfx(sfx.click);
+                    refreshListing();
                 }
             } else {
                 if (IsKeyPressed(KEY_R)) {
@@ -734,8 +796,8 @@ inline int runGUI(const std::string& initialProgram) {
         ClearBackground(Color{13, 17, 23, 255});
 
         DrawText("MIC-1 3D", 24, 18, 22, RAYWHITE);
-        const char* tabNames[] = {"Components", "Execution", "Info", "Controls"};
-        for (int i = 0; i < 4; ++i) {
+        const char* tabNames[] = {"Components", "Execution", "Info", "Debugger", "Controls"};
+        for (int i = 0; i < 5; ++i) {
             Rectangle tabBounds = {
                 250.0f + i * 138.0f,
                 12.0f,
@@ -1299,6 +1361,53 @@ inline int runGUI(const std::string& initialProgram) {
             y += 24;
             DrawText(("Instructions: " + std::to_string(session.instructions())).c_str(),
                      static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
+        } else if (tab == GuiTab::Debugger) {
+            DrawText("Debugger", static_cast<int>(inspector.x) + 14, static_cast<int>(inspector.y) + 42, 16, RAYWHITE);
+            int y = static_cast<int>(inspector.y) + 76;
+
+            if (listingLines.empty()) {
+                DrawText("No .lst file found.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
+                y += 24;
+                DrawText("Run assembly to generate", static_cast<int>(inspector.x) + 14, y, 12, LIGHTGRAY);
+            } else {
+                const std::uint32_t pc = cpu ? cpu->bank.read(RegisterBank::PC) : 0;
+                std::size_t activeIndex = 0;
+                for (std::size_t i = 0; i < listingLines.size(); ++i) {
+                    if (listingLines[i].address == pc) {
+                        activeIndex = i;
+                        break;
+                    }
+                    if (listingLines[i].address < pc)
+                        activeIndex = i;
+                }
+
+                const std::size_t start = activeIndex > 5 ? activeIndex - 5 : 0;
+                const std::size_t end = listingLines.size() < start + 12
+                    ? listingLines.size() : start + 12;
+
+                drawTextRow("PC", hex32(pc),
+                            static_cast<int>(inspector.x) + 14, y);
+                y += 4;
+
+                for (std::size_t i = start; i < end; ++i) {
+                    const ListingLine& listing = listingLines[i];
+                    const bool active = i == activeIndex;
+                    const std::string lineNumber = std::to_string(listing.sourceLine);
+                    std::string source = listing.source;
+                    if (source.size() > 24)
+                        source.resize(24);
+
+                    if (active) {
+                        DrawRectangle(static_cast<int>(inspector.x) + 8, y - 3,
+                                      static_cast<int>(inspector.width) - 16, 20,
+                                      Fade(GOLD, 0.28f));
+                    }
+                    DrawText((lineNumber + "  " + source).c_str(),
+                             static_cast<int>(inspector.x) + 14, y, 12,
+                             active ? YELLOW : RAYWHITE);
+                    y += 20;
+                }
+            }
         } else {
             DrawText("Controls", static_cast<int>(inspector.x) + 14, static_cast<int>(inspector.y) + 42, 16, RAYWHITE);
             int y = static_cast<int>(inspector.y) + 76;
@@ -1343,8 +1452,12 @@ inline int runGUI(const std::string& initialProgram) {
             editingPath = true;
             playSfx(sfx.click);
         }
+        if (controlButton({742.0f, buttonY, 108.0f, 26.0f}, "Reset view")) {
+            resetCamera();
+            playSfx(sfx.click);
+        }
 
-        DrawText(message.c_str(), 758, 680, 13, ORANGE);
+        DrawText(message.c_str(), 858, 680, 13, ORANGE);
 
         if (editingPath) {
             DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 0.78f));
