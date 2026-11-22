@@ -219,6 +219,35 @@ inline int runGUI(const std::string& initialProgram) {
     camera.fovy = 42.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
+    Model boardModel{};
+    bool boardModelLoaded = false;
+    Vector3 boardModelPosition = {};
+    float boardModelScale = 1.0f;
+
+    const char* boardModelPath = FileExists("/models/mic1board.glb")
+        ? "/models/mic1board.glb"
+        : "models/mic1board.glb";
+    boardModel = LoadModel(boardModelPath);
+    if (boardModel.meshCount > 0) {
+        boardModelLoaded = true;
+
+        const BoundingBox modelBounds = GetModelBoundingBox(boardModel);
+        const Vector3 modelSize = Vector3Subtract(modelBounds.max, modelBounds.min);
+        const Vector3 modelCenter = Vector3Scale(Vector3Add(modelBounds.min, modelBounds.max), 0.5f);
+        const float largestSize = std::max(modelSize.x, std::max(modelSize.y, modelSize.z));
+
+        if (largestSize > 0.0001f)
+            boardModelScale = 12.0f / largestSize;
+
+        boardModelPosition = Vector3Scale(modelCenter, -boardModelScale);
+
+        std::cout << "Loaded GLB: " << boardModelPath << ", meshes=" << boardModel.meshCount
+                  << ", scale=" << boardModelScale << std::endl;
+    } else {
+        boardModel = {};
+        message = "GLB not found; using fallback schematic";
+    }
+
     float yaw = 0.55f;
     float pitch = 0.48f;
     float distance = 20.0f;
@@ -392,8 +421,13 @@ inline int runGUI(const std::string& initialProgram) {
         DrawGrid(18, 1.0f);
 
         const bool energized = session.isRunning() || activityPulse > 0.0f;
-        for (const GuiRoute& route : routes)
-            drawWireRoute(route.points, route.count, route.color, elapsed, energized);
+        if (boardModelLoaded) {
+            DrawModelEx(boardModel, boardModelPosition, {0.0f, 1.0f, 0.0f},
+                        0.0f, {boardModelScale, boardModelScale, boardModelScale}, WHITE);
+        } else {
+            for (const GuiRoute& route : routes)
+                drawWireRoute(route.points, route.count, route.color, elapsed, energized);
+        }
 
         const CPURegisters* cpu = session.cpu();
         const MicroCycleEvent& event = session.lastEvent();
@@ -421,7 +455,7 @@ inline int runGUI(const std::string& initialProgram) {
         std::string hoverComponent;
         float nearestDistance = 1.0e9f;
 
-        for (std::size_t i = 0; i < components.size(); ++i) {
+        if (!boardModelLoaded) for (std::size_t i = 0; i < components.size(); ++i) {
             GuiComponent& component = components[i];
             bool active = false;
             if (activityPulse > 0.0f) {
@@ -551,7 +585,7 @@ inline int runGUI(const std::string& initialProgram) {
 
         EndMode3D();
 
-        for (const GuiComponent& component : components) {
+        if (!boardModelLoaded) for (const GuiComponent& component : components) {
             if (component.name != "ALU")
                 continue;
 
@@ -569,7 +603,7 @@ inline int runGUI(const std::string& initialProgram) {
             break;
         }
 
-        for (std::size_t i = 0; i < components.size(); ++i) {
+        if (!boardModelLoaded) for (std::size_t i = 0; i < components.size(); ++i) {
             const GuiComponent& component = components[i];
             std::string value;
             bool active = false;
@@ -773,6 +807,9 @@ inline int runGUI(const std::string& initialProgram) {
 
         EndDrawing();
     }
+
+    if (boardModelLoaded)
+        UnloadModel(boardModel);
 
     CloseWindow();
     return 0;

@@ -25,6 +25,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./shared:/data:ro
+      - ./models:/models:ro
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
       - ${GUI_XAUTHORITY:-/dev/null}:/tmp/.Xauthority:ro
     network_mode: none
@@ -45,3 +46,4 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./shared:/data:ro
+      - ./models:/models:ro
