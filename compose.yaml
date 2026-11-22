@@ -26,6 +26,7 @@ services:
     volumes:
       - ./shared:/data:ro
       - ./models:/models:ro
+      - ./sfxs:/sfxs:ro
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
       - ${GUI_XAUTHORITY:-/dev/null}:/tmp/.Xauthority:ro
     network_mode: none
@@ -47,3 +48,4 @@ services:
     volumes:
       - ./shared:/data:ro
       - ./models:/models:ro
+      - ./sfxs:/sfxs:ro

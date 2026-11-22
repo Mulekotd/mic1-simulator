@@ -41,6 +41,16 @@ struct GuiRoute {
     Color color = GRAY;
 };
 
+struct GuiSfx {
+    Sound click{};
+    Sound hover{};
+    Sound step{};
+    Sound halt{};
+    Sound problem{};
+    Sound cacheHit{};
+    Sound cacheMiss{};
+};
+
 struct ModelComponent {
     std::string name;
     Vector3 position;
@@ -309,6 +319,28 @@ inline int runGUI(const std::string& initialProgram) {
     EnableCursor();
     SetMouseCursor(MOUSE_CURSOR_ARROW);
     SetTargetFPS(60);
+    InitAudioDevice();
+
+    GuiSfx sfx;
+    const auto sfxPath = [](const char* name) {
+        const std::string dockerPath = std::string("/sfxs/") + name;
+        if (FileExists(dockerPath.c_str()))
+            return dockerPath;
+        return std::string("sfxs/") + name;
+    };
+
+    sfx.click = LoadSound(sfxPath("click.wav").c_str());
+    sfx.hover = LoadSound(sfxPath("hover.wav").c_str());
+    sfx.step = LoadSound(sfxPath("step.wav").c_str());
+    sfx.halt = LoadSound(sfxPath("halt.wav").c_str());
+    sfx.problem = LoadSound(sfxPath("problem.wav").c_str());
+    sfx.cacheHit = LoadSound(sfxPath("cache_hit.wav").c_str());
+    sfx.cacheMiss = LoadSound(sfxPath("cache_miss.wav").c_str());
+
+    const auto playSfx = [](Sound sound) {
+        if (sound.frameCount > 0)
+            PlaySound(sound);
+    };
 
     Camera3D camera{};
     camera.target = {0.0f, 0.2f, 0.0f};
@@ -583,11 +615,17 @@ inline int runGUI(const std::string& initialProgram) {
     std::uint64_t lastCycleCount = 0;
     float activityPulse = 0.0f;
     float elapsed = 0.0f;
+    std::string previousHover;
+    float hoverCooldown = 0.0f;
+    bool previousHalt = false;
+    float stepCooldown = 0.0f;
 
     while (!WindowShouldClose()) {
         const float frameTime = GetFrameTime();
         elapsed += frameTime;
         activityPulse = std::max(0.0f, activityPulse - frameTime);
+        hoverCooldown = std::max(0.0f, hoverCooldown - frameTime);
+        stepCooldown = std::max(0.0f, stepCooldown - frameTime);
 
         try {
             if (editingPath) {
@@ -603,16 +641,30 @@ inline int runGUI(const std::string& initialProgram) {
                     session.load(pathInput);
                     editingPath = false;
                     message = "Programa carregado";
+                    playSfx(sfx.click);
                 }
             } else {
-                if (IsKeyPressed(KEY_R)) session.run();
-                if (IsKeyPressed(KEY_P)) session.pause();
-                if (IsKeyPressed(KEY_B) && !session.back()) message = "Sem subciclo anterior";
-                if (IsKeyPressed(KEY_X)) session.reset();
+                if (IsKeyPressed(KEY_R)) {
+                    session.run();
+                    playSfx(sfx.click);
+                }
+                if (IsKeyPressed(KEY_P)) {
+                    session.pause();
+                    playSfx(sfx.click);
+                }
+                if (IsKeyPressed(KEY_B)) {
+                    if (!session.back()) message = "Sem subciclo anterior";
+                    playSfx(sfx.click);
+                }
+                if (IsKeyPressed(KEY_X)) {
+                    session.reset();
+                    playSfx(sfx.click);
+                }
                 if (IsKeyPressed(KEY_HOME)) resetCamera();
                 if (IsKeyPressed(KEY_SPACE)) {
                     session.pause();
                     session.step();
+                    playSfx(sfx.step);
                 }
                 if (IsKeyPressed(KEY_L)) {
                     session.pause();
@@ -623,6 +675,7 @@ inline int runGUI(const std::string& initialProgram) {
         } catch (const std::exception& error) {
             session.pause();
             message = error.what();
+            playSfx(sfx.problem);
         }
 
         if (!editingPath) {
@@ -632,6 +685,7 @@ inline int runGUI(const std::string& initialProgram) {
                 } catch (const std::exception& error) {
                     session.pause();
                     message = error.what();
+                    playSfx(sfx.problem);
                 }
             }
         }
@@ -639,7 +693,15 @@ inline int runGUI(const std::string& initialProgram) {
         if (session.cycles() != lastCycleCount) {
             lastCycleCount = session.cycles();
             activityPulse = 0.28f;
+            if (stepCooldown <= 0.0f) {
+                playSfx(sfx.step);
+                stepCooldown = 0.06f;
+            }
         }
+
+        if (session.isHalted() && !previousHalt)
+            playSfx(sfx.halt);
+        previousHalt = session.isHalted();
 
         if (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) {
             if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
@@ -779,6 +841,7 @@ inline int runGUI(const std::string& initialProgram) {
             if (!hoverComponent.empty() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 selectedComponent = hoverComponent;
                 inspectingComponent = true;
+                playSfx(sfx.click);
 
                 for (const ModelComponent& component : modelComponents) {
                     if (component.name == selectedComponent) {
@@ -788,6 +851,12 @@ inline int runGUI(const std::string& initialProgram) {
                 }
                 distance = std::min(distance, 5.5f);
             }
+
+            if (hoverComponent != previousHover && !hoverComponent.empty() && hoverCooldown <= 0.0f) {
+                playSfx(sfx.hover);
+                hoverCooldown = 0.12f;
+            }
+            previousHover = hoverComponent;
 
             if (!hoverComponent.empty()) {
                 for (const ModelComponent& component : modelComponents) {
@@ -1247,21 +1316,32 @@ inline int runGUI(const std::string& initialProgram) {
         roundedPanel(controlBar, Color{22, 28, 36, 255});
 
         const float buttonY = 675.0f;
-        if (controlButton({262.0f, buttonY, 72.0f, 26.0f}, "Run", true))
+        if (controlButton({262.0f, buttonY, 72.0f, 26.0f}, "Run", true)) {
             session.run();
-        if (controlButton({342.0f, buttonY, 72.0f, 26.0f}, "Pause"))
+            playSfx(sfx.click);
+        }
+        if (controlButton({342.0f, buttonY, 72.0f, 26.0f}, "Pause")) {
             session.pause();
-        if (controlButton({422.0f, buttonY, 72.0f, 26.0f}, "Step"))
+            playSfx(sfx.click);
+        }
+        if (controlButton({422.0f, buttonY, 72.0f, 26.0f}, "Step")) {
             session.step();
-        if (controlButton({502.0f, buttonY, 72.0f, 26.0f}, "Back"))
+            playSfx(sfx.step);
+        }
+        if (controlButton({502.0f, buttonY, 72.0f, 26.0f}, "Back")) {
             session.back();
-        if (controlButton({582.0f, buttonY, 72.0f, 26.0f}, "Reset"))
+            playSfx(sfx.click);
+        }
+        if (controlButton({582.0f, buttonY, 72.0f, 26.0f}, "Reset")) {
             session.reset();
+            playSfx(sfx.click);
+        }
         if (controlButton({662.0f, buttonY, 72.0f, 26.0f}, "Load"))
         {
             session.pause();
             pathInput = session.path();
             editingPath = true;
+            playSfx(sfx.click);
         }
 
         DrawText(message.c_str(), 758, 680, 13, ORANGE);
@@ -1288,6 +1368,14 @@ inline int runGUI(const std::string& initialProgram) {
 
     if (boardModelLoaded)
         UnloadModel(boardModel);
+    UnloadSound(sfx.click);
+    UnloadSound(sfx.hover);
+    UnloadSound(sfx.step);
+    UnloadSound(sfx.halt);
+    UnloadSound(sfx.problem);
+    UnloadSound(sfx.cacheHit);
+    UnloadSound(sfx.cacheMiss);
+    CloseAudioDevice();
 
     CloseWindow();
     return 0;
