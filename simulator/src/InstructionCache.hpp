@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
+// Cache de instruções de mapeamento direto com 16 linhas de quatro palavras
 class InstructionCache {
 public:
     static constexpr std::size_t lineWords = 4;
@@ -20,12 +21,14 @@ public:
     };
 
     bool cacheable(std::size_t address, std::size_t memoryWords) const {
+        // o bloco inteiro deve caber na memória e ficar antes dos endereços de E/S
         const std::size_t first = (address / lineWords) * lineWords;
         return first + lineWords <= memoryWords &&
                first + lineWords <= mic1::constants::haltAddress;
     }
 
     bool lookup(std::size_t address, Word& value) {
+        // o índice escolhe uma única linha e a tag identifica qual bloco está nela
         const std::size_t block = address / lineWords;
         const Line& line = lines[block % lineCount];
 
@@ -40,11 +43,12 @@ public:
     }
 
     Word fill(const Memory& memory, std::size_t address) {
+        // um miss substitui a linha escolhida e carrega as quatro palavras do bloco
         const std::size_t block = address / lineWords;
         Line& line = lines[block % lineCount];
         const std::size_t first = block * lineWords;
 
-        line.valid = false;
+        line.valid = false; // evita expor dados parciais se a leitura falhar
 
         for (std::size_t offset = 0; offset < lineWords; ++offset)
             line.words[offset] = memory.read(first + offset);

@@ -19,7 +19,7 @@ cmake --build simulator/builds/local
 
 Para compilar apenas a CLI sem Raylib, configure o simulador com `-DMIC1_ENABLE_GUI=OFF` e execute `./simulator/builds/local/mic1-simulator /tmp/sum.bin`.
 
-A GUI inicia a execução de `sum.bin` e permanece aberta após `HALT`. Os controles são: **R** executar/retomar, **P** pausar, **Espaço** avançar um microciclo, **B** voltar um microciclo, **X** reiniciar o programa e **L** digitar o caminho de outro `.bin` (Enter carrega, Esc cancela). Ela mostra os acertos, falhas e o último acesso da I-cache. Ao voltar, as saídas e as estatísticas do microciclo desfeito são restauradas. Fechar a janela encerra o processo.
+A GUI usa o modelo 3D de `models/` e os efeitos sonoros de `sfxs/`. Ela inicia a execução de `sum.bin` e permanece aberta após `HALT`. Os controles são: **R** executar/retomar, **P** pausar, **Espaço** avançar um microciclo, **B** voltar um microciclo, **X** reiniciar o programa e **L** digitar o caminho de outro `.bin` (Enter carrega, Esc cancela). **Home** restaura a câmera. Ela mostra os acertos, falhas e o último acesso da I-cache no painel e no componente CACHE. Ao voltar, as saídas e as estatísticas do microciclo desfeito são restauradas. Fechar a janela encerra o processo.
 
 A execução direta pelo terminal usa `mic1-simulator program.bin [--cycles N] [--trace]`. Sem `--cycles`, a CLI executa até `HALT` e termina. O `.bin` contém até 4096 palavras de 32 bits em little-endian, sem cabeçalho.
 

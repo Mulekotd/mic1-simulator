@@ -23,6 +23,7 @@ public:
         program = path;
         history.clear();
         output.clear();
+        lastEventState = {};
         running = false;
     }
 
@@ -37,13 +38,14 @@ public:
         if (!machine || machine->halted())
             return false;
 
-        history.push_back({ ram, machine->snapshot(), output.size() });
+        history.push_back({ ram, machine->snapshot(), output.size(), lastEventState });
 
         if (history.size() > 1024) // limita o histórico em 1024 ciclos
             history.pop_front();
 
         try {
             const auto event = machine->step();
+            lastEventState = event;
 
             if (event.integerOutput) {
                 // valores acima de maxPositiveWord precisam subtrair wordModulus para recuperar o sinal
@@ -93,12 +95,15 @@ public:
     const std::string& path() const { return program; }
     const std::vector<std::string>& outputs() const { return output; }
     const CPURegisters* cpu() const { return machine ? &machine->cpu() : nullptr; }
+    const RAM* memory() const { return isLoaded() ? &ram : nullptr; }
+    const MicroCycleEvent& lastEvent() const { return lastEventState; }
 
 private:
     struct History {
         RAM ram;
         Core::Snapshot machine;
         std::size_t outputCount;
+        MicroCycleEvent lastEvent;
     };
 
     bool restoreLast() {
@@ -108,6 +113,7 @@ private:
         ram = history.back().ram;
         machine->restore(history.back().machine);
         output.resize(history.back().outputCount);
+        lastEventState = history.back().lastEvent;
         history.pop_back();
 
         return true;
@@ -118,6 +124,7 @@ private:
     std::string program;
     std::deque<History> history;
     std::vector<std::string> output;
+    MicroCycleEvent lastEventState;
 
     bool running = false;
 };
