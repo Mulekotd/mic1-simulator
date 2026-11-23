@@ -12,8 +12,6 @@
 
 namespace {
 
-// Cada deslocamento leva o primeiro bit do campo à posição 0; a máscara isola sua largura
-// Exemplo: A ocupa os bits 9 a 13, então >> 9 e registerSelectorMask extraem seus 5 bits
 struct MicroFields {
     explicit MicroFields(std::uint64_t word)
         : a((word >> 9) & mic1::constants::registerSelectorMask),
@@ -98,7 +96,7 @@ void Core::validateInstruction(Word word) {
         // no formato B, o subopcode ocupa os bits 24 a 27
         const unsigned sub = (word >> 24) & mic1::constants::subopcodeMask;
 
-        // As máscaras testam bits reservados e o operando baixo quando ausente
+        // as máscaras testam bits reservados e o operando baixo quando ausente
         if ((word & mic1::constants::formatBReservedBitsMask) ||
             (sub & 1u) || (sub < 12 && (word & mic1::constants::lowByteMask)))
             throw std::runtime_error("instrução B inválida");

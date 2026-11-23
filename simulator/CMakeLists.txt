@@ -15,6 +15,7 @@ add_executable(mic1-simulator src/main.cpp src/CLI.cpp)
 target_link_libraries(mic1-simulator PRIVATE mic1_core)
 
 if(MIC1_ENABLE_GUI)
+    target_sources(mic1-simulator PRIVATE src/GUI.cpp)
     find_package(raylib QUIET)
     if(NOT raylib_FOUND AND NOT TARGET raylib)
         include(FetchContent)
