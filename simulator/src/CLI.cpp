@@ -1,6 +1,6 @@
 #include "CLI.hpp"
 #include "Constants.hpp"
-#include "MicroMachine.hpp"
+#include "Core.hpp"
 #include "RAM.hpp"
 #include "io/BinaryImage.hpp"
 
@@ -73,7 +73,7 @@ void printOutput(const MicroCycleEvent& event, bool& characterLineOpen) {
     }
 }
 
-void printTrace(const MicroMachine& machine, const MicroCycleEvent& event) {
+void printTrace(const Core& machine, const MicroCycleEvent& event) {
     const auto& cpu = machine.cpu();
 
     std::cerr << "cycle=" << machine.cycles()
@@ -88,7 +88,7 @@ void printTrace(const MicroMachine& machine, const MicroCycleEvent& event) {
               << " N=" << cpu.n << " Z=" << cpu.z << '\n';
 }
 
-void printSummary(const MicroMachine& machine, const RAM& ram, std::size_t loadedWords) {
+void printSummary(const Core& machine, const RAM& ram, std::size_t loadedWords) {
     if (machine.halted())
         std::cout << "HALTED cycles=" << machine.cycles()
                   << " instructions=" << machine.instructions() << '\n';
@@ -112,13 +112,14 @@ int runCLI(int argc, char* argv[]) {
 
     try {
         RAM ram;
-        const auto loadedWords = loadBinaryImage(options.program, ram); // carrega o programa binário na RAM
+        const auto words = loadBinaryImage(options.program, ram); // carrega o programa binário na RAM
 
-        MicroMachine machine(ram);
+        Core machine(ram);
         bool characterLineOpen = false;
 
         while (!machine.halted() && (!options.cycles || machine.cycles() < *options.cycles)) {
             const auto event = machine.step();
+
             printOutput(event, characterLineOpen);
 
             if (options.trace)
@@ -128,7 +129,7 @@ int runCLI(int argc, char* argv[]) {
         if (characterLineOpen)
             std::cout << '\n';
 
-        printSummary(machine, ram, loadedWords);
+        printSummary(machine, ram, words);
 
         return 0;
     } catch (const std::exception& error) {

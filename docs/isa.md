@@ -1,6 +1,6 @@
 # ISA (macroinstruções)
 
-A MIC-1 deste projeto usa uma ISA de **máquina de acumulador com pilha** (registradores visíveis: `ac`, `pc`, `sp`), com **23 instruções**. As caches planejadas não alteram o formato nem o comportamento das instruções.
+A MIC-1 deste projeto usa uma ISA de **máquina de acumulador com pilha** (registradores visíveis: `ac`, `pc`, `sp`), com **23 instruções**. A I-cache implementada não altera o formato nem o comportamento das instruções.
 
 **Codificação em 32 bits.** Para o microprograma fornecido continuar valendo sem mudanças, o opcode fica nos **4 bits mais altos** da palavra (o microprograma identifica a instrução deslocando `ir` e testando o sinal `N`). O campo `x` tem 12 bits e representa endereço, constante ou deslocamento relativo a `sp`, conforme a instrução; `y` é um campo separado de 8 bits para `INSP`/`DESP`:
 
@@ -35,7 +35,7 @@ Formato B (opcode 1111):          [31:28] = 1111 | [27:24] sub-opcode | [23:8] =
 | `1111`, sub `1100` | INSP      | `sp := sp + y` (0 a 255)             |
 | `1111`, sub `1110` | DESP      | `sp := sp - y` (0 a 255)             |
 
-**Sem HALT e sem E/S na ISA.** A ISA do PDF não tem instrução de parada nem de entrada/saída. Para "retornar a saída final do programa", o projeto usa **E/S mapeada em memória**, nos últimos endereços do espaço de 4096 palavras. Escritas nesses endereços são tratadas diretamente pelo simulador; a D-cache ainda não foi implementada:
+Para "retornar a saída final do programa", o projeto usa **E/S mapeada em memória**, nos últimos endereços do espaço de 4096 palavras. Escritas nesses endereços são tratadas diretamente pelo simulador:
 
 | Endereço | Efeito de `STOD` nele                                  |
 | -------- | ------------------------------------------------------ |
@@ -51,7 +51,7 @@ Os modos de endereçamento e a formação do endereço na MIC-1 estão detalhado
 
 - `pc`, `sp` e `x` contêm **endereços de palavras**, não de bytes. Uma palavra tem 32 bits; a RAM tem endereços `0x000` a `0xFFF`.
 - As operações aritméticas usam complemento de dois de 32 bits, com descarte do carry além do bit 31. `JPOS` e `JNEG` interpretam o sinal do valor de `ac`; `JZER` e `JNZE` testam zero.
-- `x` e `y` são inteiros **sem sinal**. `LOCO x` não codifica constante negativa. Um acesso `sp + x` fora de `0x000` a `0xFFF` é inválido; não há retorno circular do endereço.
+- `x` e `y` são inteiros **sem sinal**. `LOCO x` não codifica constante negativa. Acessos de dados relativos a `sp` devem ficar entre `0x000` e `0xFFC`; endereços de E/S e valores acima da RAM são rejeitados, sem retorno circular após o corte em 12 bits.
 - O `pc` aponta para a próxima instrução após a busca. Por isso `CALL` empilha o endereço de retorno já incrementado.
 - A pilha começa em `sp = 0xFFC` e cresce para endereços menores. O primeiro `PUSH` ou `CALL` escreve em `0xFFB`. Os endereços `0xFFD` a `0xFFF` ficam reservados para E/S.
 - O arquivo `.bin` contém as palavras consecutivas em **little-endian**, sem cabeçalho, a partir do endereço 0. Instruções e dados compartilham a mesma RAM.

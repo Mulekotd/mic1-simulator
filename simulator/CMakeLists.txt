@@ -8,7 +8,7 @@ add_library(mic1_components INTERFACE)
 target_compile_features(mic1_components INTERFACE cxx_std_17)
 target_include_directories(mic1_components INTERFACE src)
 
-add_library(mic1_core STATIC src/MicroMachine.cpp)
+add_library(mic1_core STATIC src/Core.cpp)
 target_link_libraries(mic1_core PUBLIC mic1_components)
 
 add_executable(mic1-simulator src/main.cpp src/CLI.cpp)

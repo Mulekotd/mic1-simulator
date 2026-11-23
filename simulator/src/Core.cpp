@@ -1,4 +1,4 @@
-#include "MicroMachine.hpp"
+#include "Core.hpp"
 
 #include "ALU.hpp"
 #include "AMUX.hpp"
@@ -25,24 +25,26 @@ struct MicroFields {
           address((word >> 1) & mic1::constants::branchAddressMask),
           useMbr((word >> 35) & 1), writeMbr((word >> 28) & 1),
           writeMar((word >> 27) & 1), read((word >> 26) & 1),
-          write((word >> 25) & 1), writeC((word >> 24) & 1) {}
+          write((word >> 25) & 1), writeC((word >> 24) & 1),
+          ifetch(word & 1) {}
 
     std::uint8_t a, b, c, alu, shift, cond, address;
-    bool useMbr, writeMbr, writeMar, read, write, writeC; // sinais de seleção e escrita da microinstrução
+    bool useMbr, writeMbr, writeMar, read, write, writeC, ifetch; // sinais da microinstrução
 };
 
 }  // namespace
 
-MicroMachine::MicroMachine(Memory& memory) : memory(memory) {
+Core::Core(Memory& memory) : memory(memory) {
     for (std::size_t i = 0; i < microasm.size(); ++i)
         control.write(static_cast<std::uint8_t>(i), microasm[i]); // carrega as microinstruções na memória de controle
 }
 
-MicroMachine::Snapshot MicroMachine::snapshot() const {
-    return { cpuState, clock, pending, instructionCount, haltedFlag, memoryLatency, justCompleted };
+Core::Snapshot Core::snapshot() const {
+    return { cpuState, clock, pending, instructionCount, haltedFlag, memoryLatency,
+             justCompleted, instructionCache, lastCacheAccess };
 }
 
-void MicroMachine::restore(const Snapshot& state) {
+void Core::restore(const Snapshot& state) {
     cpuState = state.cpu;
     clock = state.clock;
     pending = state.pending;
@@ -50,9 +52,11 @@ void MicroMachine::restore(const Snapshot& state) {
     haltedFlag = state.halted;
     memoryLatency = state.memoryLatency;
     justCompleted = state.justCompleted;
+    instructionCache = state.instructionCache;
+    lastCacheAccess = state.lastInstructionCacheAccess;
 }
 
-MicroCycleEvent MicroMachine::step() {
+MicroCycleEvent Core::step() {
     if (haltedFlag)
         throw std::logic_error("simulação já encerrada");
 
@@ -77,13 +81,13 @@ MicroCycleEvent MicroMachine::step() {
     return event;
 }
 
-void MicroMachine::validateAddress(std::uint64_t address, bool write) const {
+void Core::validateAddress(std::uint64_t address, bool write) const {
     // inicia os endereços reservados para E/S
     if (address >= memory.sizeWords() || (!write && address >= mic1::constants::haltAddress))
         throw std::out_of_range("endereço fora da memória principal");
 }
 
-void MicroMachine::validateInstruction(Word word) {
+void Core::validateInstruction(Word word) {
     const unsigned opcode = word >> 28; // opcode ocupa os quatro bits mais altos da instrução
 
     if (opcode < 15) {
@@ -101,13 +105,18 @@ void MicroMachine::validateInstruction(Word word) {
     }
 }
 
-void MicroMachine::advanceMemory(MicroCycleEvent& event) {
+void Core::advanceMemory(MicroCycleEvent& event) {
     if (!pending.active || --pending.remaining != 0)
         return;
 
     if (pending.read) {
         validateAddress(pending.address);
-        cpuState.mbr.write(memory.read(pending.address));
+
+        const Word value = pending.instructionFetch
+            ? (pending.cacheHit ? pending.value : instructionCache.fill(memory, pending.address))
+            : memory.read(pending.address);
+
+        cpuState.mbr.write(value);
     } else {
         validateAddress(pending.address, true);
 
@@ -128,7 +137,7 @@ void MicroMachine::advanceMemory(MicroCycleEvent& event) {
     justCompleted = true;
 }
 
-void MicroMachine::validateMarSource(std::uint8_t mpc, Word raw) const {
+void Core::validateMarSource(std::uint8_t mpc, Word raw) const {
     // raw é o valor da porta B antes de MAR descartar os bits acima do bit 11
     // haltAddress inicia as portas de E/S; acessos comuns à RAM devem ficar abaixo dele
 
@@ -157,7 +166,7 @@ void MicroMachine::validateMarSource(std::uint8_t mpc, Word raw) const {
         throw std::out_of_range("endereço indireto fora da RAM");
 }
 
-void MicroMachine::executeMicro(MicroCycleEvent& event) {
+void Core::executeMicro(MicroCycleEvent& event) {
     const std::uint64_t word = event.word;
     const std::uint8_t mpc = event.mpc;
     const MicroFields fields(word);
@@ -172,6 +181,9 @@ void MicroMachine::executeMicro(MicroCycleEvent& event) {
     if (fields.read && fields.write)
         throw std::runtime_error("RD e WR simultâneos");
 
+    if (fields.ifetch && !fields.read)
+        throw std::runtime_error("IF exige RD");
+
     const Word mar = fields.writeMar ? b & mic1::constants::addressFieldMask : cpuState.mar.read(); // MAR usa os 12 bits baixos do endereço
     const Word mbr = fields.writeMbr ? shifted : cpuState.mbr.read();
 
@@ -180,8 +192,35 @@ void MicroMachine::executeMicro(MicroCycleEvent& event) {
 
     if (fields.read || fields.write) {
         if (!pending.active) {
-            if (!(justCompleted && pending.read == fields.read && pending.address == mar))
-                pending = { true, fields.read, mar, mbr, memoryLatency, false };
+            if (!(justCompleted && pending.read == fields.read && pending.address == mar)) {
+                unsigned latency = memoryLatency;
+                Word value = mbr;
+                bool cacheHit = false;
+                bool instructionFetch = false;
+
+                if (fields.ifetch) {
+                    validateAddress(mar);
+
+                    if (instructionCache.cacheable(mar, memory.sizeWords())) {
+                        cacheHit = instructionCache.lookup(mar, value);
+
+                        event.instructionCacheAccess = cacheHit
+                            ? InstructionCache::Access::Hit : InstructionCache::Access::Miss;
+
+                        instructionFetch = true;
+
+                        if (cacheHit)
+                            latency = 1;
+                    } else {
+                        event.instructionCacheAccess = InstructionCache::Access::Bypass;
+                    }
+
+                    lastCacheAccess = event.instructionCacheAccess;
+                }
+
+                pending = { true, fields.read, mar, value, latency, false,
+                            instructionFetch, cacheHit };
+            }
         } else if (pending.read != fields.read) {
             throw std::runtime_error("transações de memória sobrepostas");
         } else {

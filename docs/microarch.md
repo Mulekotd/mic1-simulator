@@ -1,10 +1,10 @@
 # Microarquitetura MIC-1 com cache
 
-Esta página descreve o caminho de dados da MIC-1 de 32 bits e a futura integração das caches. O simulador já executa as 79 microinstruções de [mic1.masm](../tools/microcode/mic1.masm) pela Memória de Controle. As caches ainda não foram implementadas. A [ISA](isa.md) define as instruções visíveis ao programa.
+Esta página descreve o caminho de dados da MIC-1 de 32 bits e a I-cache implementada. O simulador já executa as 79 microinstruções de [mic1.masm](../tools/microcode/mic1.masm) pela Memória de Controle. A [ISA](isa.md) define as instruções visíveis ao programa.
 
 ## Caminho de dados
 
-`MAR` e `MBR` são a interface com a memória. O bit `IF` marca uma leitura de instrução para o futuro caminho da I-cache; atualmente leituras e escritas chegam à RAM sem caches. A Memória de Controle é separada e nunca passa pelas caches de programa. [Memória e caches](memory.md) descreve latência, stalls e E/S.
+`MAR` e `MBR` são a interface com a memória. O bit `IF` encaminha leituras de instrução para a I-cache; acessos a dados continuam chegando diretamente à RAM. A Memória de Controle é separada e nunca passa pela I-cache. O núcleo [`Core`](../simulator/src/Core.hpp) coordena esses componentes. [Memória e caches](memory.md) descreve latência, stalls e E/S.
 
 ## Registradores e estado inicial
 
@@ -50,10 +50,10 @@ O bit 35 é o mais significativo. Campos não usados por uma micro-operação s�
 
 `RD` e `WR` juntos são inválidos. `IF=1` exige `RD=1` e `WR=0`. A ULA retorna o valor e as flags N/Z; N usa o bit 31 e Z indica resultado zero, **antes** do shifter. `COND` usa essas flags da micro-operação corrente; se a condição falha, o MPC avança módulo 256. `MAR` recebe o valor da porta B, enquanto C e MBR recebem a saída do shifter. Quando há uma leitura de memória pendente, MBR recebe a palavra lida apenas na conclusão da transação.
 
-Cada palavra de `ctrl.bin` ocupa **5 bytes little-endian**: bits 0–35 da microinstrução e quatro bits altos zerados no quinto byte. O arquivo pode conter até 256 palavras; endereços não fornecidos ficam zerados. Isso é distinto do `.bin` de programas, que usa palavras de 4 bytes.
+Cada palavra de `ctrl.bin` ocupa **5 bytes little-endian**: bits 0–35 da microinstrução e quatro bits altos zerados no quinto byte. O arquivo pode conter até 256 palavras; endereços não fornecidos ficam zerados. Isso é distinto do `.bin` de programas, que usa palavras de 4 bytes. O simulador atual executa a ROM embutida em `simulator/src/generated/Mic1Rom.hpp`; ele não carrega `ctrl.bin` em tempo de execução.
 
 Little-endian é a convenção dos arquivos binários deste projeto: o montador grava primeiro o byte menos significativo e o carregador recompõe a palavra nessa mesma ordem. A RAM do simulador guarda palavras inteiras de 32 bits e usa endereços por palavra; portanto a escolha da ordem dos bytes no arquivo não acelera a ULA nem muda o caminho de dados. Big-endian também funcionaria se todos os gravadores e leitores fossem alterados juntos. O vetor C++ `Mic1Rom.hpp` guarda valores numéricos de 36 bits e não depende da ordem dos bytes de `ctrl.bin`.
 
 ## Ciclo de execução
 
-Cada ciclo lê A/B do banco, calcula AMUX → ULA → shifter, resolve N/Z e o próximo MPC, e aplica as escritas habilitadas na borda. `RD` ou `WR` inicia uma transação de memória; as linhas repetidas de `rd`/`wr` no microprograma sustentam o pedido até a resposta. A leitura disponibiliza MBR antes da microinstrução que o consome. `tools/microcode/microasm.py` codifica o arquivo simbólico em palavras de 36 bits e gera `ctrl.bin` e `.mlst`; `build_rom.py` usa o mesmo parser para gerar `simulator/src/generated/Mic1Rom.hpp`. As linhas 0 e 1 contêm `ifetch`, que define `IF=1` para a futura I-cache.
+Cada ciclo lê A/B do banco, calcula AMUX → ULA → shifter, resolve N/Z e o próximo MPC, e aplica as escritas habilitadas na borda. `RD` ou `WR` inicia uma transação de memória; as linhas repetidas de `rd`/`wr` no microprograma sustentam o pedido até a resposta. A leitura disponibiliza MBR antes da microinstrução que o consome. `tools/microcode/microasm.py` codifica o arquivo simbólico em palavras de 36 bits e gera `ctrl.bin` e `.mlst`; `build_rom.py` usa o mesmo parser para gerar `simulator/src/generated/Mic1Rom.hpp`. As linhas 0 e 1 contêm `ifetch`, que define `IF=1` para a I-cache.

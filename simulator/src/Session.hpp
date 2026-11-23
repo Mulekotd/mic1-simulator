@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Constants.hpp"
-#include "MicroMachine.hpp"
+#include "Core.hpp"
 #include "RAM.hpp"
 #include "io/BinaryImage.hpp"
 
@@ -19,7 +19,7 @@ public:
         RAM loaded;
         loadBinaryImage(path, loaded);
         ram = loaded;
-        machine = std::make_unique<MicroMachine>(ram);
+        machine = std::make_unique<Core>(ram);
         program = path;
         history.clear();
         output.clear();
@@ -46,7 +46,7 @@ public:
             const auto event = machine->step();
 
             if (event.integerOutput) {
-                // Valores acima de maxPositiveWord precisam subtrair wordModulus para recuperar o sinal
+                // valores acima de maxPositiveWord precisam subtrair wordModulus para recuperar o sinal
                 const std::int64_t signedValue = event.output <= mic1::constants::maxPositiveWord
                     ? event.output : std::int64_t{event.output} - mic1::constants::wordModulus;
 
@@ -83,6 +83,12 @@ public:
 
     std::uint64_t cycles() const { return machine ? machine->cycles() : 0; }
     std::uint64_t instructions() const { return machine ? machine->instructions() : 0; }
+    InstructionCache::Stats instructionCacheStats() const {
+        return machine ? machine->instructionCacheStats() : InstructionCache::Stats{};
+    }
+    InstructionCache::Access lastInstructionCacheAccess() const {
+        return machine ? machine->lastInstructionCacheAccess() : InstructionCache::Access::None;
+    }
 
     const std::string& path() const { return program; }
     const std::vector<std::string>& outputs() const { return output; }
@@ -91,7 +97,7 @@ public:
 private:
     struct History {
         RAM ram;
-        MicroMachine::Snapshot machine;
+        Core::Snapshot machine;
         std::size_t outputCount;
     };
 
@@ -108,7 +114,7 @@ private:
     }
 
     RAM ram;
-    std::unique_ptr<MicroMachine> machine;
+    std::unique_ptr<Core> machine;
     std::string program;
     std::deque<History> history;
     std::vector<std::string> output;

@@ -16,4 +16,4 @@ A **busca de instrução** usa implicitamente `PC`: a palavra em `M[PC]` é busc
 
 O microprograma calcula os endereços com o banco de registradores, a ULA e o shifter. Quando precisa acessar a RAM, coloca o endereço em `MAR`; a leitura entrega a palavra em `MBR`. Por exemplo, `LODL x` soma `SP` e `x` antes de ler a memória. Os seletores A, B e C da microinstrução escolhem registradores internos: eles não são novos modos de endereçamento da ISA. A [microarquitetura](microarch.md) descreve esses campos.
 
-Os acessos de dados fora da RAM válida são rejeitados. Os endereços `0xFFD`–`0xFFF` têm funções de E/S mapeada; isso é uma **região de endereços**, não um modo adicional. A pilha começa com `SP = 0xFFC` e cresce em direção a endereços menores.
+Leituras de `0xFFD`–`0xFFF` são rejeitadas. Escritas nesses endereços acionam E/S mapeada; acessos relativos a `SP` e acessos da pilha não podem usá-los. Essa é uma **região de endereços**, não um modo adicional. A pilha começa com `SP = 0xFFC` e cresce em direção a endereços menores.

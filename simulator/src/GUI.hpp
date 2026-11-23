@@ -102,23 +102,37 @@ inline int runGUI(const std::string& initialProgram) {
                       "   MPC: " + std::to_string(cpu->mpc)).c_str(), 24, 205, 18, RAYWHITE);
         }
 
+        const auto cacheStats = session.instructionCacheStats();
+        const char* lastCacheAccess = "nenhum";
+
+        switch (session.lastInstructionCacheAccess()) {
+            case InstructionCache::Access::Hit: lastCacheAccess = "acerto"; break;
+            case InstructionCache::Access::Miss: lastCacheAccess = "falha"; break;
+            case InstructionCache::Access::Bypass: lastCacheAccess = "sem cache"; break;
+            case InstructionCache::Access::None: break;
+        }
+
+        DrawText(("I-Cache  acertos: " + std::to_string(cacheStats.hits) +
+                  "   falhas: " + std::to_string(cacheStats.misses) +
+                  "   ultimo: " + lastCacheAccess).c_str(), 24, 235, 18, RAYWHITE);
+
         if (editingPath) {
-            DrawText("Caminho do .bin (Enter carrega, Esc cancela):", 24, 245, 18, LIGHTGRAY);
-            DrawText(pathInput.c_str(), 24, 270, 18, YELLOW);
+            DrawText("Caminho do .bin (Enter carrega, Esc cancela):", 24, 265, 18, LIGHTGRAY);
+            DrawText(pathInput.c_str(), 24, 290, 18, YELLOW);
         } else {
-            DrawText(message.c_str(), 24, 245, 18, ORANGE);
+            DrawText(message.c_str(), 24, 265, 18, ORANGE);
         }
 
         if (editingPath)
-            DrawText(message.c_str(), 24, 295, 18, ORANGE);
+            DrawText(message.c_str(), 24, 315, 18, ORANGE);
 
-        DrawText("Saida:", 24, 325, 20, LIGHTGRAY);
+        DrawText("Saida:", 24, 345, 20, LIGHTGRAY);
 
         const auto& lines = session.outputs();
         const std::size_t first = lines.size() > 12 ? lines.size() - 12 : 0;
         
         for (std::size_t i = first; i < lines.size(); ++i)
-            DrawText(lines[i].c_str(), 24, 355 + static_cast<int>(i - first) * 19, 17, RAYWHITE);
+            DrawText(lines[i].c_str(), 24, 372 + static_cast<int>(i - first) * 19, 17, RAYWHITE);
 
         EndDrawing();
     }
