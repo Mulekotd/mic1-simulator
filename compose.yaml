@@ -13,8 +13,8 @@ services:
   simulator:
     image: mic1-simulator
     build:
-      context: ./simulator
-      dockerfile: ../dockerfiles/Simulator
+      context: .
+      dockerfile: dockerfiles/Simulator
     user: "${GUI_UID:-1000}:${GUI_GID:-1000}"
     environment:
       DISPLAY: "${DISPLAY:-:0}"
@@ -35,8 +35,8 @@ services:
     profiles: [gui-windows]
     image: mic1-simulator
     build:
-      context: ./simulator
-      dockerfile: ../dockerfiles/Simulator
+      context: .
+      dockerfile: dockerfiles/Simulator
     user: "1000:1000"
     environment:
       DISPLAY: host.docker.internal:0.0

@@ -127,7 +127,12 @@ void Core::advanceMemory(MicroCycleEvent& event) {
             event.integerOutput = true;
             event.output = pending.value;
         } else {
+            const Word previousValue = memory.read(pending.address);
             memory.write(pending.address, pending.value);
+            event.memoryWrite = true;
+            event.memoryWriteAddress = pending.address;
+            event.memoryPreviousValue = previousValue;
+            event.memoryNewValue = pending.value;
         }
     }
 

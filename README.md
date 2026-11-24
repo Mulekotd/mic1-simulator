@@ -1,6 +1,6 @@
-# Simulador MIC-1 com cache
+# Simulador MIC-1 com cache de instruções
 
-Simulador de uma MIC-1 de 32 bits em C++17, com montador de assembly e microasm em Python. Executa as 23 instruções da [ISA](docs/isa.md). A I-cache está implementada; a D-cache ainda será implementada.
+Simulador de uma MIC-1 de 32 bits em C++17, com montador de assembly e microasm em Python. Executa as 23 instruções da [ISA](docs/isa.md) e usa uma cache de instruções (I-cache).
 
 ## Arquitetura e uso local
 
@@ -19,7 +19,7 @@ cmake --build simulator/builds/local
 
 Para compilar apenas a CLI sem Raylib, configure o simulador com `-DMIC1_ENABLE_GUI=OFF` e execute `./simulator/builds/local/mic1-simulator /tmp/sum.bin`.
 
-A GUI usa o modelo 3D de `models/` e os efeitos sonoros de `sfxs/`. Ela inicia a execução de `sum.bin` e permanece aberta após `HALT`. Os controles são: **R** executar/retomar, **P** pausar, **Espaço** avançar um microciclo, **B** voltar um microciclo, **X** reiniciar o programa e **L** digitar o caminho de outro `.bin` (Enter carrega, Esc cancela). **Home** restaura a câmera. O botão **Velocidade** abre uma janela com `0.25x`, `0.5x`, `1x` (padrão), `1.5x` e `2x`; em `1x`, a execução automática avança 10 microciclos por segundo. O avanço manual continua de um microciclo por clique. Ela mostra os acertos, falhas e o último acesso da I-cache no painel e no componente CACHE. Ao voltar, as saídas e as estatísticas do microciclo desfeito são restauradas. Fechar a janela encerra o processo.
+A GUI usa o modelo 3D de `models/`, a fonte de `fonts/` e os efeitos sonoros de `sfxs/`. Ela inicia a execução de `sum.bin` e permanece aberta após `HALT`. Os controles são: **R** executar/retomar, **P** pausar/retomar, **Espaço** avançar um microciclo, **B** voltar um microciclo, **X** reiniciar o programa e **L** digitar o caminho de outro `.bin` (Enter carrega, Esc cancela). **Home** restaura a câmera. O botão **Velocidade** abre uma janela com `0.25x`, `0.5x`, `1x` (padrão), `1.5x` e `2x`; em `1x`, a execução automática avança 10 microciclos por segundo. O avanço manual continua de um microciclo por clique. Ela mostra os acertos, falhas e o último acesso da I-cache no painel e no componente CACHE. A pilha permanece visível à esquerda, com endereços fixos, valores da RAM e destaque para as células ativas e o topo; a roda do mouse ou a barra visual percorrem os demais endereços. A inspeção da RAM mostra suas 4096 palavras e a capacidade de 16 KiB. Quando a RAM recebe uma escrita, a célula alterada entra em foco e pulsa em verde (gravação) ou laranja (valor zero); ao voltar um ciclo, pulsa em azul. Na aba Execução, os contadores de microciclos e instruções acompanham as saídas recentes, que podem ser percorridas com a roda do mouse ou pela barra de rolagem. Sem componente selecionado, o inspetor resume os registradores principais; a aba de execução traduz os campos da microinstrução em nomes de registradores e operações. Ao voltar, as saídas, os valores da pilha e as estatísticas do microciclo desfeito são restaurados. Fechar a janela encerra o processo.
 
 A execução direta pelo terminal usa `mic1-simulator program.bin [--cycles N] [--trace]`. Sem `--cycles`, a CLI executa até `HALT` e termina. O `.bin` contém até 4096 palavras de 32 bits em little-endian, sem cabeçalho.
 
@@ -62,3 +62,4 @@ python3 tools/microcode/microasm.py tools/microcode/mic1.masm -o /tmp/ctrl.bin -
 - [Microarquitetura](docs/microarch.md)
 - [Memória](docs/memory.md)
 - [Plano de desenvolvimento](docs/development.md)
+- [Apresentação em slides](presentation/README.md)

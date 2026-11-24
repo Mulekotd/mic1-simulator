@@ -4,7 +4,7 @@ Esta página descreve o caminho de dados da MIC-1 de 32 bits e a I-cache impleme
 
 ## Caminho de dados
 
-`MAR` e `MBR` são a interface com a memória. O bit `IF` encaminha leituras de instrução para a I-cache; acessos a dados continuam chegando diretamente à RAM. A Memória de Controle é separada e nunca passa pela I-cache. O núcleo [`Core`](../simulator/src/Core.hpp) coordena esses componentes. [Memória e caches](memory.md) descreve latência, stalls e E/S.
+`MAR` e `MBR` são a interface com a memória. O bit `IF` encaminha leituras de instrução para a I-cache; acessos a dados continuam chegando diretamente à RAM. A Memória de Controle é separada e nunca passa pela I-cache. O núcleo [`Core`](../simulator/src/Core.hpp) coordena esses componentes. [Memória e E/S](memory.md) descreve latência, stalls e E/S.
 
 ## Registradores e estado inicial
 

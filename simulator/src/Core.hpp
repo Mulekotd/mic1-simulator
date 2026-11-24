@@ -17,6 +17,10 @@ struct MicroCycleEvent {
     Word output = 0;
     bool halted = false;
     bool memoryStall = false;
+    bool memoryWrite = false;
+    Word memoryWriteAddress = 0;
+    Word memoryPreviousValue = 0;
+    Word memoryNewValue = 0;
     InstructionCache::Access instructionCacheAccess = InstructionCache::Access::None;
 };
 

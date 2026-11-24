@@ -8,9 +8,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
-COPY CMakeLists.txt ./
-COPY src/ ./src/
-RUN cmake -S . -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+COPY simulator/CMakeLists.txt ./simulator/CMakeLists.txt
+COPY simulator/src/ ./simulator/src/
+COPY fonts/ ./fonts/
+RUN cmake -S ./simulator -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
     && cmake --build /build --parallel
 
 FROM debian:bookworm-slim
@@ -22,6 +23,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /build/mic1-simulator /usr/local/bin/mic1-simulator
+COPY --from=build /src/fonts /fonts
 WORKDIR /data
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/mic1-simulator"]

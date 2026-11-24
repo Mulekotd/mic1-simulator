@@ -21,6 +21,23 @@
 
 namespace {
 
+Font uiFont{};
+bool uiFontLoaded = false;
+
+void drawUiText(const char* value, int x, int y, int size, Color color) {
+    if (uiFontLoaded)
+        DrawTextEx(uiFont, value, {static_cast<float>(x), static_cast<float>(y)},
+                   static_cast<float>(size), 0.0f, color);
+    else
+        ::DrawText(value, x, y, size, color);
+}
+
+int measureUiText(const char* value, int size) {
+    return uiFontLoaded
+        ? static_cast<int>(std::ceil(MeasureTextEx(uiFont, value, static_cast<float>(size), 0.0f).x))
+        : ::MeasureText(value, size);
+}
+
 enum class GuiTab : int {
     Components = 0,
     Execution,
@@ -241,7 +258,7 @@ void roundedPanel(Rectangle bounds, Color fill, const char* title = nullptr) {
     DrawRectangleRoundedLinesEx(bounds, 0.04f, 8, 1.0f, Fade(RAYWHITE, 0.10f));
 
     if (title) {
-        DrawText(title, static_cast<int>(bounds.x) + 14,
+        drawUiText(title, static_cast<int>(bounds.x) + 14,
                  static_cast<int>(bounds.y) + 12, 18, RAYWHITE);
     }
 }
@@ -257,9 +274,9 @@ bool tabButton(Rectangle bounds, const char* label, bool active) {
 
     DrawRectangleRounded(bounds, 0.16f, 6, fill);
 
-    const int textWidth = MeasureText(label, 16);
+    const int textWidth = measureUiText(label, 16);
 
-    DrawText(label, static_cast<int>(bounds.x + (bounds.width - textWidth) * 0.5f),
+    drawUiText(label, static_cast<int>(bounds.x + (bounds.width - textWidth) * 0.5f),
              static_cast<int>(bounds.y + 12), 16, RAYWHITE);
 
     return pressed;
@@ -275,20 +292,219 @@ bool controlButton(Rectangle bounds, const char* label, bool primary = false) {
 
     DrawRectangleRounded(bounds, 0.18f, 6, fill);
 
-    const int textWidth = MeasureText(label, 15);
+    const int textWidth = measureUiText(label, 15);
 
-    DrawText(label, static_cast<int>(bounds.x + (bounds.width - textWidth) * 0.5f),
+    drawUiText(label, static_cast<int>(bounds.x + (bounds.width - textWidth) * 0.5f),
              static_cast<int>(bounds.y + 8), 15, RAYWHITE);
 
     return pressed;
 }
 
+enum class DebugIcon { Play, Pause, StepForward, StepBack, Reset };
+
+bool iconButton(Rectangle bounds, DebugIcon icon, const char* tooltip,
+                bool primary = false, bool selected = false) {
+    const Vector2 mouse = GetMousePosition();
+    const bool hovered = pointInRectangle(mouse, bounds);
+    const bool pressed = hovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    const Color fill = pressed ? Color{36, 77, 118, 255}
+                     : selected ? Color{61, 116, 154, 255}
+                     : hovered ? (primary ? Color{78, 137, 195, 255} : Color{68, 78, 91, 255})
+                     : (primary ? Color{55, 103, 151, 255} : Color{48, 57, 68, 255});
+    DrawRectangleRounded(bounds, 0.18f, 6, fill);
+
+    const float cx = bounds.x + bounds.width * 0.5f;
+    const float cy = bounds.y + bounds.height * 0.5f;
+    if (icon == DebugIcon::Play || icon == DebugIcon::StepForward) {
+        DrawTriangle({cx - 7.0f, cy - 8.0f}, {cx - 7.0f, cy + 8.0f},
+                     {cx + 7.0f, cy}, RAYWHITE);
+        if (icon == DebugIcon::StepForward)
+            DrawRectangle(static_cast<int>(cx + 10), static_cast<int>(cy - 8), 3, 16, RAYWHITE);
+    } else if (icon == DebugIcon::Pause) {
+        DrawRectangle(static_cast<int>(cx - 7), static_cast<int>(cy - 8), 5, 16, RAYWHITE);
+        DrawRectangle(static_cast<int>(cx + 2), static_cast<int>(cy - 8), 5, 16, RAYWHITE);
+    } else if (icon == DebugIcon::StepBack) {
+        DrawTriangle({cx + 7.0f, cy - 8.0f}, {cx - 7.0f, cy},
+                     {cx + 7.0f, cy + 8.0f}, RAYWHITE);
+        DrawRectangle(static_cast<int>(cx - 13), static_cast<int>(cy - 8), 3, 16, RAYWHITE);
+    } else {
+        DrawRing({cx, cy}, 6.0f, 8.5f, 40.0f, 310.0f, 30, RAYWHITE);
+        DrawTriangle({cx + 6.0f, cy - 10.0f}, {cx + 13.0f, cy - 10.0f},
+                     {cx + 10.0f, cy - 3.0f}, RAYWHITE);
+    }
+    if (hovered) {
+        const int width = measureUiText(tooltip, 12) + 16;
+        const int left = static_cast<int>(cx) - width / 2;
+        DrawRectangleRounded({static_cast<float>(left), bounds.y - 31.0f,
+                              static_cast<float>(width), 25.0f}, 0.18f, 5,
+                             Color{9, 22, 36, 245});
+        drawUiText(tooltip, left + 8, static_cast<int>(bounds.y) - 26, 12, RAYWHITE);
+    }
+    return pressed;
+}
+
 void drawTextRow(const char* label, const std::string& value, int x, int& y,
                  Color valueColor = RAYWHITE) {
-    DrawText(label, x, y, 15, LIGHTGRAY);
-    DrawText(value.c_str(), x + 94, y, 15, valueColor);
+    const int labelSize = measureUiText(label, 15) > 88 ? 12 : 15;
+    const int valueWidth = 1242 - (x + 94);
+    const int valueSize = measureUiText(value.c_str(), 15) <= valueWidth ? 15 :
+                          measureUiText(value.c_str(), 13) <= valueWidth ? 13 : 11;
+    drawUiText(label, x, y, labelSize, LIGHTGRAY);
+    drawUiText(value.c_str(), x + 94, y, valueSize, valueColor);
 
     y += 26;
+}
+
+std::string registerName(unsigned index) {
+    constexpr std::array<const char*, 16> names = {
+        "ZERO", "PC", "AC", "SP", "IR", "TIR", "ONE", "MONE",
+        "AMASK", "SMASK", "A", "B", "C", "D", "E", "F"
+    };
+    return index < names.size() ? names[index] : "R" + std::to_string(index);
+}
+
+const char* aluName(unsigned operation) {
+    constexpr std::array<const char*, 4> names = {"A + B", "A AND B", "A", "NOT A"};
+    return names[operation & 3];
+}
+
+const char* shiftName(unsigned operation) {
+    constexpr std::array<const char*, 4> names = {"sem shift", "direita 1", "esquerda 1", "inválido"};
+    return names[operation & 3];
+}
+
+const char* conditionName(unsigned condition) {
+    constexpr std::array<const char*, 4> names = {"MPC + 1", "ADDR se N", "ADDR se Z", "ADDR sempre"};
+    return names[condition & 3];
+}
+
+const char* macroName(std::uint32_t instruction) {
+    constexpr std::array<const char*, 15> formatA = {
+        "LODD", "STOD", "ADDD", "SUBD", "JPOS", "JZER", "JUMP", "LOCO",
+        "LODL", "STOL", "ADDL", "SUBL", "JNEG", "JNZE", "CALL"
+    };
+    constexpr std::array<const char*, 8> formatB = {
+        "PSHI", "POPI", "PUSH", "POP", "RETN", "SWAP", "INSP", "DESP"
+    };
+    const unsigned opcode = instruction >> 28;
+    if (opcode < formatA.size())
+        return formatA[opcode];
+    const unsigned subopcode = (instruction >> 24) & 0xF;
+    return subopcode % 2 == 0 ? formatB[subopcode / 2] : "inválida";
+}
+
+struct RamChange {
+    std::uint32_t address = 0;
+    Word newValue = 0;
+    bool restored = false;
+    float remaining = 0.0f;
+};
+
+Color ramChangeColor(const RamChange& change) {
+    return change.restored ? SKYBLUE : change.newValue == 0 ? ORANGE : GREEN;
+}
+
+constexpr Rectangle stackPanelBounds{16.0f, 236.0f, 220.0f, 420.0f};
+constexpr Rectangle stackScrollTrack{218.0f, 307.0f, 8.0f, 290.0f};
+constexpr std::size_t stackVisibleCells = 10;
+constexpr std::size_t stackCellCount = mic1::constants::initialStackPointer;
+constexpr std::size_t stackMaxScroll = stackCellCount - stackVisibleCells;
+constexpr Rectangle recentOutputBounds{1036.0f, 487.0f, 205.0f, 151.0f};
+constexpr std::size_t recentOutputVisibleRows = 7;
+
+std::size_t recentOutputMaxScroll(std::size_t count) {
+    return count > recentOutputVisibleRows ? count - recentOutputVisibleRows : 0;
+}
+
+void drawRecentOutputs(const std::vector<std::string>& lines, std::size_t scroll) {
+    DrawRectangleRounded(recentOutputBounds, 0.08f, 4, Color{13, 20, 29, 255});
+    const std::size_t maxScroll = recentOutputMaxScroll(lines.size());
+    const std::size_t first = maxScroll - std::min(scroll, maxScroll);
+    BeginScissorMode(static_cast<int>(recentOutputBounds.x + 7),
+                     static_cast<int>(recentOutputBounds.y + 6),
+                     static_cast<int>(recentOutputBounds.width - 23),
+                     static_cast<int>(recentOutputBounds.height - 12));
+    if (lines.empty())
+        drawUiText("Nenhuma saída ainda.", static_cast<int>(recentOutputBounds.x + 9),
+                   static_cast<int>(recentOutputBounds.y + 10), 12, LIGHTGRAY);
+    for (std::size_t row = 0; row < recentOutputVisibleRows && first + row < lines.size(); ++row)
+        drawUiText(lines[first + row].c_str(), static_cast<int>(recentOutputBounds.x + 9),
+                   static_cast<int>(recentOutputBounds.y + 10 + row * 19), 12, RAYWHITE);
+    EndScissorMode();
+
+    const Rectangle track{recentOutputBounds.x + recentOutputBounds.width - 10,
+                          recentOutputBounds.y + 6, 5, recentOutputBounds.height - 12};
+    DrawRectangleRounded(track, 0.5f, 4, Color{44, 54, 67, 255});
+    const float thumbHeight = maxScroll == 0 ? track.height :
+        std::max(24.0f, track.height * static_cast<float>(recentOutputVisibleRows) /
+                           static_cast<float>(lines.size()));
+    const float thumbY = track.y + (track.height - thumbHeight) *
+        (maxScroll == 0 ? 0.0f : static_cast<float>(first) / static_cast<float>(maxScroll));
+    DrawRectangleRounded({track.x, thumbY, track.width, thumbHeight}, 0.5f, 4, SKYBLUE);
+}
+
+void drawStackPanel(const RAM* memory, const CPURegisters* cpu, std::size_t scroll,
+                    const RamChange& change, float elapsed) {
+    roundedPanel(stackPanelBounds, Color{22, 28, 36, 255}, "Memória Principal");
+
+    const std::uint32_t sp = cpu ? cpu->bank.read(RegisterBank::SP)
+                                 : mic1::constants::initialStackPointer;
+    const bool validSp = sp <= mic1::constants::initialStackPointer;
+    const std::size_t depth = validSp ? mic1::constants::initialStackPointer - sp : 0;
+
+    drawUiText(("SP: " + hex32(sp)).c_str(), 30, 276, 12, validSp ? SKYBLUE : ORANGE);
+    drawUiText((std::to_string(depth) + " células ativas").c_str(), 30, 292, 11, LIGHTGRAY);
+
+    for (std::size_t i = 0; i < stackVisibleCells; ++i) {
+        const std::size_t address = stackCellCount - 1 - scroll - i;
+        const int y = 310 + static_cast<int>(i) * 29;
+
+        std::ostringstream addressText;
+        addressText << "0x" << std::uppercase << std::hex << std::setw(3)
+                    << std::setfill('0') << address;
+
+        const bool active = validSp && address >= sp;
+        const bool top = active && address == sp;
+        const bool changed = change.remaining > 0.0f && address == change.address;
+        const Color changeColor = ramChangeColor(change);
+
+        drawUiText(addressText.str().c_str(), 30, y + 6, 12,
+                   changed ? changeColor : top ? GOLD : active ? SKYBLUE : LIGHTGRAY);
+
+        const Rectangle cell{78.0f, static_cast<float>(y), 134.0f, 26.0f};
+
+        DrawRectangleRounded(cell, 0.15f, 4,
+                             changed ? Fade(changeColor, 0.30f + 0.16f *
+                                        (1.0f + std::sin(elapsed * 18.0f)) * 0.5f) :
+                             top ? Color{92, 70, 37, 255} : active ? Color{45, 84, 113, 255}
+                                                                    : Color{36, 44, 55, 255});
+        DrawRectangleRoundedLinesEx(cell, 0.15f, 4, changed ? 2.5f : 1.0f,
+                                    changed ? changeColor : top ? GOLD :
+                                    active ? SKYBLUE : Fade(RAYWHITE, 0.18f));
+
+        const std::string value = memory ? hex32(memory->read(address)) : "--------";
+
+        drawUiText(value.c_str(), 84, y + 6, 12,
+                   changed || active ? RAYWHITE : LIGHTGRAY);
+    }
+
+    DrawRectangleRounded(stackScrollTrack, 0.5f, 4, Color{42, 50, 62, 255});
+    constexpr float thumbHeight = 24.0f;
+    const float thumbTravel = stackScrollTrack.height - thumbHeight;
+    const float thumbY = stackScrollTrack.y + thumbTravel *
+                         (static_cast<float>(scroll) / static_cast<float>(stackMaxScroll));
+    DrawRectangleRounded({stackScrollTrack.x, thumbY, stackScrollTrack.width, thumbHeight},
+                         0.5f, 4, SKYBLUE);
+    if (change.remaining > 0.0f) {
+        std::ostringstream notice;
+        notice << "0x" << std::uppercase << std::hex << std::setw(3)
+               << std::setfill('0') << change.address << " "
+               << (change.restored ? "restaurada" : change.newValue == 0 ? "limpa" : "gravada");
+        drawUiText(notice.str().c_str(), 30, 608, 11, ramChangeColor(change));
+    } else {
+        drawUiText("Azul: ativa | Dourado: topo", 30, 608, 10, LIGHTGRAY);
+    }
+    drawUiText("Roda ou arraste a barra", 30, 627, 11, LIGHTGRAY);
 }
 
 void drawStatusDot(int x, int y, bool active, Color activeColor) {
@@ -303,7 +519,7 @@ void drawValueLabel(Camera3D camera, Vector3 worldPosition, const char* label,
     Vector2 position = GetWorldToScreen(worldPosition, camera);
     position.y -= 48.0f + static_cast<float>((index & 1) * 8);
 
-    const int width = MeasureText(value, 13) + 18;
+    const int width = measureUiText(value, 13) + 18;
     const Rectangle panel = {
         position.x - width * 0.5f,
         position.y,
@@ -316,8 +532,8 @@ void drawValueLabel(Camera3D camera, Vector3 worldPosition, const char* label,
 
     DrawRectangleRounded(panel, 0.18f, 5,
                          Fade(Color{25, 31, 39, 255}, 0.92f));
-    DrawText(label, static_cast<int>(panel.x) + 9, static_cast<int>(panel.y) + 5, 11, LIGHTGRAY);
-    DrawText(value, static_cast<int>(panel.x) + 9, static_cast<int>(panel.y) + 21, 13, RAYWHITE);
+    drawUiText(label, static_cast<int>(panel.x) + 9, static_cast<int>(panel.y) + 5, 11, LIGHTGRAY);
+    drawUiText(value, static_cast<int>(panel.x) + 9, static_cast<int>(panel.y) + 21, 13, RAYWHITE);
 }
 
 void drawWire(Vector3 start, Vector3 end, Color color, float thickness = 0.035f) {
@@ -414,11 +630,34 @@ int runGUI(const std::string& initialProgram) {
 
     refreshListing();
 
-    InitWindow(1280, 720, "MIC-1 3D Simulator");
+    InitWindow(1280, 720, "Chimps");
     SetWindowMinSize(960, 600);
     EnableCursor();
     SetMouseCursor(MOUSE_CURSOR_ARROW);
     SetTargetFPS(60);
+
+    const char* fontPaths[] = {
+        "/fonts/DejaVuSans.ttf",
+        "fonts/DejaVuSans.ttf",
+        "../fonts/DejaVuSans.ttf"
+    };
+
+    for (const char* path : fontPaths) {
+        if (!FileExists(path))
+            continue;
+
+        std::array<int, 224> codepoints{};
+        for (std::size_t i = 0; i < codepoints.size(); ++i)
+            codepoints[i] = static_cast<int>(i) + 32;
+
+        uiFont = LoadFontEx(path, 40, codepoints.data(), static_cast<int>(codepoints.size()));
+        uiFontLoaded = uiFont.texture.id != 0;
+
+        if (uiFontLoaded) {
+            SetTextureFilter(uiFont.texture, TEXTURE_FILTER_BILINEAR);
+            break;
+        }
+    }
     InitAudioDevice();
 
     GuiSfx sfx;
@@ -442,6 +681,13 @@ int runGUI(const std::string& initialProgram) {
     const auto playSfx = [](Sound sound) {
         if (sound.frameCount > 0)
             PlaySound(sound);
+    };
+
+    const auto togglePause = [&session]() {
+        if (session.isRunning())
+            session.pause();
+        else
+            session.run();
     };
 
     Camera3D camera{};
@@ -743,12 +989,46 @@ int runGUI(const std::string& initialProgram) {
 
     std::uint64_t lastCacheHits = 0;
     std::uint64_t lastCacheMisses = 0;
+    std::size_t stackScroll = 0;
+    bool draggingStackScroll = false;
+    std::size_t recentOutputScroll = 0;
+    std::size_t knownOutputCount = session.outputs().size();
+    bool draggingRecentOutputScroll = false;
+    RamChange ramChange;
+
+    auto markRamChange = [&](std::uint32_t address, Word value, bool restored) {
+        ramChange = {address, value, restored, 1.6f};
+        if (address < stackCellCount) {
+            const std::size_t row = stackCellCount - 1 - address;
+            if (row < stackScroll || row >= stackScroll + stackVisibleCells)
+                stackScroll = std::min(row > 4 ? row - 4 : 0, stackMaxScroll);
+        }
+    };
+    auto stepSession = [&]() {
+        if (!session.step())
+            return false;
+        const auto& event = session.lastEvent();
+        if (event.memoryWrite)
+            markRamChange(event.memoryWriteAddress, event.memoryNewValue, false);
+        return true;
+    };
+    auto backSession = [&]() {
+        const MicroCycleEvent undone = session.lastEvent();
+        if (!session.back())
+            return false;
+        if (undone.memoryWrite)
+            markRamChange(undone.memoryWriteAddress,
+                          session.memory()->read(undone.memoryWriteAddress), true);
+        return true;
+    };
 
     while (!WindowShouldClose()) {
         const float frameTime = GetFrameTime();
         refreshListing();
         elapsed += frameTime;
+
         activityPulse = std::max(0.0f, activityPulse - frameTime);
+        ramChange.remaining = std::max(0.0f, ramChange.remaining - frameTime);
         hoverCooldown = std::max(0.0f, hoverCooldown - frameTime);
         stepCooldown = std::max(0.0f, stepCooldown - frameTime);
 
@@ -767,6 +1047,8 @@ int runGUI(const std::string& initialProgram) {
                     editingPath = false;
                 if (IsKeyPressed(KEY_ENTER) && !pathInput.empty()) {
                     session.load(pathInput);
+                    ramChange = {};
+                    stackScroll = 0;
                     editingPath = false;
                     message = "Programa carregado";
                     playSfx(sfx.click);
@@ -778,23 +1060,25 @@ int runGUI(const std::string& initialProgram) {
                     playSfx(sfx.click);
                 }
                 if (IsKeyPressed(KEY_P)) {
-                    session.pause();
+                    togglePause();
                     playSfx(sfx.click);
                 }
                 if (IsKeyPressed(KEY_B)) {
-                    if (!session.back())
+                    if (!backSession())
                         message = "Sem subciclo anterior";
                     playSfx(sfx.click);
                 }
                 if (IsKeyPressed(KEY_X)) {
                     session.reset();
+                    ramChange = {};
+                    stackScroll = 0;
                     playSfx(sfx.click);
                 }
                 if (IsKeyPressed(KEY_HOME))
                     resetCamera();
                 if (IsKeyPressed(KEY_SPACE)) {
                     session.pause();
-                    session.step();
+                    stepSession();
                     playSfx(sfx.step);
                 }
                 if (IsKeyPressed(KEY_L)) {
@@ -816,7 +1100,7 @@ int runGUI(const std::string& initialProgram) {
 
             for (int i = 0; i < 20 && stepAccumulator >= 1.0f && session.isRunning(); ++i) {
                 try {
-                    session.step();
+                    stepSession();
                     stepAccumulator -= 1.0f;
                 } catch (const std::exception& error) {
                     session.pause();
@@ -832,6 +1116,7 @@ int runGUI(const std::string& initialProgram) {
         if (session.cycles() != lastCycleCount) {
             lastCycleCount = session.cycles();
             activityPulse = 0.28f;
+
             if (stepCooldown <= 0.0f) {
                 playSfx(sfx.step);
                 stepCooldown = 0.06f;
@@ -841,14 +1126,17 @@ int runGUI(const std::string& initialProgram) {
         const auto cacheStats = session.instructionCacheStats();
         const bool cacheHitThisFrame = cacheStats.hits > lastCacheHits;
         const bool cacheMissThisFrame = cacheStats.misses > lastCacheMisses;
+
         if (cacheMissThisFrame)
             playSfx(sfx.cacheMiss);
         else if (cacheHitThisFrame)
             playSfx(sfx.cacheHit);
+
         lastCacheHits = cacheStats.hits;
         lastCacheMisses = cacheStats.misses;
 
         const char* lastCacheAccess = "nenhum";
+
         switch (session.lastInstructionCacheAccess()) {
             case InstructionCache::Access::Hit: lastCacheAccess = "acerto"; break;
             case InstructionCache::Access::Miss: lastCacheAccess = "falha"; break;
@@ -858,7 +1146,14 @@ int runGUI(const std::string& initialProgram) {
 
         if (session.isHalted() && !previousHalt)
             playSfx(sfx.halt);
+
         previousHalt = session.isHalted();
+
+        const std::size_t outputCount = session.outputs().size();
+        if (outputCount > knownOutputCount && recentOutputScroll > 0)
+            recentOutputScroll += outputCount - knownOutputCount;
+        recentOutputScroll = std::min(recentOutputScroll, recentOutputMaxScroll(outputCount));
+        knownOutputCount = outputCount;
 
         if (!speedDialogOpen && (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT))) {
             if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
@@ -872,8 +1167,58 @@ int runGUI(const std::string& initialProgram) {
             pitch = std::clamp(pitch + delta.y * 0.006f, 0.10f, 1.25f);
         }
 
-        if (!speedDialogOpen)
-            distance -= GetMouseWheelMove() * 1.2f;
+        if (!speedDialogOpen) {
+            const float wheel = GetMouseWheelMove();
+            const Vector2 mouse = GetMousePosition();
+            if (tab == GuiTab::Execution && pointInRectangle(mouse, recentOutputBounds)) {
+                const auto amount = 3 * static_cast<std::size_t>(std::ceil(std::abs(wheel)));
+                if (wheel > 0.0f)
+                    recentOutputScroll = std::min(recentOutputScroll + amount,
+                                                  recentOutputMaxScroll(outputCount));
+                else if (wheel < 0.0f)
+                    recentOutputScroll = amount > recentOutputScroll ? 0 : recentOutputScroll - amount;
+            } else if (pointInRectangle(mouse, stackPanelBounds)) {
+                if (wheel < 0.0f)
+                    stackScroll = std::min(stackScroll + 3 * static_cast<std::size_t>(std::ceil(-wheel)),
+                                           stackMaxScroll);
+                else if (wheel > 0.0f) {
+                    const auto amount = 3 * static_cast<std::size_t>(std::ceil(wheel));
+                    stackScroll = amount > stackScroll ? 0 : stackScroll - amount;
+                }
+            } else {
+                distance -= wheel * 1.2f;
+            }
+
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+                pointInRectangle(mouse, stackScrollTrack))
+                draggingStackScroll = true;
+            if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+                draggingStackScroll = false;
+            if (draggingStackScroll) {
+                constexpr float thumbHeight = 24.0f;
+                const float ratio = std::clamp(
+                    (mouse.y - stackScrollTrack.y - thumbHeight * 0.5f) /
+                    (stackScrollTrack.height - thumbHeight), 0.0f, 1.0f);
+                stackScroll = static_cast<std::size_t>(std::lround(ratio * stackMaxScroll));
+            }
+            const Rectangle outputTrack{recentOutputBounds.x + recentOutputBounds.width - 14,
+                                        recentOutputBounds.y, 14.0f, recentOutputBounds.height};
+            if (tab == GuiTab::Execution && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+                pointInRectangle(mouse, outputTrack))
+                draggingRecentOutputScroll = true;
+            if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) || tab != GuiTab::Execution)
+                draggingRecentOutputScroll = false;
+            if (draggingRecentOutputScroll) {
+                const auto maxScroll = recentOutputMaxScroll(outputCount);
+                const float ratio = std::clamp(
+                    (mouse.y - recentOutputBounds.y) / recentOutputBounds.height,
+                    0.0f, 1.0f);
+                recentOutputScroll = maxScroll - static_cast<std::size_t>(std::lround(ratio * maxScroll));
+            }
+        } else {
+            draggingStackScroll = false;
+            draggingRecentOutputScroll = false;
+        }
         distance = inspectingComponent
             ? std::clamp(distance, 5.0f, 28.0f)
             : std::clamp(distance, 9.0f, 28.0f);
@@ -891,12 +1236,14 @@ int runGUI(const std::string& initialProgram) {
         BeginDrawing();
         ClearBackground(Color{13, 17, 23, 255});
 
-        DrawText("MIC-1 3D", 24, 18, 22, RAYWHITE);
+        drawUiText("CHIMPS", 24, 18, 22, RAYWHITE);
         roundedPanel({16.0f, 66.0f, 220.0f, 160.0f}, Color{22, 28, 36, 255}, "I-Cache");
-        DrawText(("Acertos: " + std::to_string(cacheStats.hits)).c_str(), 30, 112, 16, RAYWHITE);
-        DrawText(("Falhas: " + std::to_string(cacheStats.misses)).c_str(), 30, 143, 16, RAYWHITE);
-        DrawText((std::string("Ultimo: ") + lastCacheAccess).c_str(), 30, 174, 16, LIGHTGRAY);
-        const char* tabNames[] = {"Components", "Execution", "Info", "Debugger", "Controls"};
+        drawUiText(("Acertos: " + std::to_string(cacheStats.hits)).c_str(), 30, 112, 16, RAYWHITE);
+        drawUiText(("Falhas: " + std::to_string(cacheStats.misses)).c_str(), 30, 143, 16, RAYWHITE);
+        drawUiText((std::string("Último: ") + lastCacheAccess).c_str(), 30, 174, 16, LIGHTGRAY);
+        drawStackPanel(session.memory(), session.cpu(), stackScroll, ramChange, elapsed);
+
+        const char* tabNames[] = {"Componentes", "Execução", "Informações", "Depurador", "Controles"};
         for (int i = 0; i < 5; ++i) {
             Rectangle tabBounds = {
                 250.0f + i * 138.0f,
@@ -987,7 +1334,10 @@ int runGUI(const std::string& initialProgram) {
                     }
                 }
 
-                if (active) {
+                if (component.name == "RAM" && ramChange.remaining > 0.0f) {
+                    DrawCubeWiresV(component.position, Vector3Scale(component.size, 1.10f),
+                                   ramChangeColor(ramChange));
+                } else if (active) {
                     Vector3 position = component.position;
                     position.x += std::sin(elapsed * 95.0f + i) * 0.025f;
                     position.y += std::cos(elapsed * 83.0f + i) * 0.018f;
@@ -1142,6 +1492,9 @@ int runGUI(const std::string& initialProgram) {
                 DrawCubeV(position, component.size, face);
                 DrawCubeWiresV(position, component.size,
                                selected ? RAYWHITE : Fade(RAYWHITE, 0.42f));
+                if (component.name == "RAM" && ramChange.remaining > 0.0f)
+                    DrawCubeWiresV(position, Vector3Scale(component.size, 1.10f),
+                                   ramChangeColor(ramChange));
             }
         }
 
@@ -1206,7 +1559,7 @@ int runGUI(const std::string& initialProgram) {
                     labelPosition.y < viewport.y || labelPosition.y > viewport.y + viewport.height)
                     continue;
 
-                const int width = MeasureText(component.name.c_str(), 12) + 14;
+                const int width = measureUiText(component.name.c_str(), 12) + 14;
                 const Rectangle label = {
                     labelPosition.x - width * 0.5f,
                     labelPosition.y - 12.0f,
@@ -1214,7 +1567,7 @@ int runGUI(const std::string& initialProgram) {
                     24.0f
                 };
                 DrawRectangleRounded(label, 0.20f, 5, Fade(BLACK, 0.88f));
-                DrawText(component.name.c_str(),
+                drawUiText(component.name.c_str(),
                          static_cast<int>(label.x) + 7,
                          static_cast<int>(label.y) + 6,
                          12, RAYWHITE);
@@ -1237,7 +1590,7 @@ int runGUI(const std::string& initialProgram) {
 
                 DrawLineEx(aluLeft, aluBottom, 5.0f, RAYWHITE);
                 DrawLineEx(aluRight, aluBottom, 5.0f, RAYWHITE);
-                DrawText("ALU", static_cast<int>(aluBottom.x) - 14,
+                drawUiText("ALU", static_cast<int>(aluBottom.x) - 14,
                          static_cast<int>(aluBottom.y) + 8, 12, RAYWHITE);
                 break;
             }
@@ -1304,17 +1657,17 @@ int runGUI(const std::string& initialProgram) {
         }
 
         if (!hoverComponent.empty())
-            DrawText(("Selecionar " + hoverComponent).c_str(),
+            drawUiText(("Selecionar " + hoverComponent).c_str(),
                      static_cast<int>(viewport.x) + 18,
                      static_cast<int>(viewport.y) + 18, 14, RAYWHITE);
 
         if (layoutEditing) {
             DrawRectangleRounded({viewport.x + 18.0f, viewport.y + 38.0f, 410.0f, 48.0f},
                                  0.12f, 6, Fade(BLACK, 0.88f));
-            DrawText("LAYOUT EDITOR  F2 exit  F3 copy",
+            drawUiText("LAYOUT EDITOR  F2 exit  F3 copy",
                      static_cast<int>(viewport.x) + 32,
                      static_cast<int>(viewport.y) + 48, 13, GOLD);
-            DrawText("Drag components or wire points; arrows nudge",
+            drawUiText("Drag components or wire points; arrows nudge",
                      static_cast<int>(viewport.x) + 32,
                      static_cast<int>(viewport.y) + 68, 12, RAYWHITE);
         }
@@ -1323,195 +1676,212 @@ int runGUI(const std::string& initialProgram) {
         roundedPanel(inspector, Color{22, 28, 36, 255});
 
         if (tab == GuiTab::Components) {
-            DrawText("Component", static_cast<int>(inspector.x) + 14, static_cast<int>(inspector.y) + 42, 16, RAYWHITE);
-            DrawText(selectedComponent.empty() ? "None selected" : selectedComponent.c_str(),
+            drawUiText("Componente", static_cast<int>(inspector.x) + 14, static_cast<int>(inspector.y) + 42, 16, RAYWHITE);
+            drawUiText(selectedComponent.empty() ? "Nenhum selecionado" : selectedComponent.c_str(),
                      static_cast<int>(inspector.x) + 14,
                      static_cast<int>(inspector.y) + 68, 20,
                      selectedComponent.empty() ? LIGHTGRAY : SKYBLUE);
 
             int y = static_cast<int>(inspector.y) + 112;
             if (selectedComponent.empty()) {
-                DrawText("Click a component to inspect it.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
+                if (cpu) {
+                    const int x = static_cast<int>(inspector.x) + 14;
+                    drawUiText("Estado da CPU", x, y, 15, SKYBLUE);
+                    y += 28;
+                    drawTextRow("PC", hex32(cpu->bank.read(RegisterBank::PC)), x, y);
+                    drawTextRow("AC", hex32(cpu->bank.read(RegisterBank::AC)), x, y);
+                    drawTextRow("SP", hex32(cpu->bank.read(RegisterBank::SP)), x, y);
+                    drawTextRow("IR", macroName(cpu->bank.read(RegisterBank::IR)), x, y);
+                    y += 8;
+                    drawUiText("Clique no diagrama para ver", x, y, 12, LIGHTGRAY);
+                    drawUiText("um componente em detalhe.", x, y + 17, 12, LIGHTGRAY);
+                } else {
+                    drawUiText("Carregue um programa.", static_cast<int>(inspector.x) + 14,
+                               y, 13, LIGHTGRAY);
+                }
             } else if (cpu) {
                 drawStatusDot(static_cast<int>(inspector.x) + 18, y + 7,
                               activityPulse > 0.0f, GOLD);
-                drawTextRow("State", session.isRunning() ? "Running" : session.isHalted() ? "HALT" : "Paused",
+                drawTextRow("Estado", session.isRunning() ? "Executando" : session.isHalted() ? "HALT" : "Pausado",
                             static_cast<int>(inspector.x) + 34, y);
 
                 if (selectedComponent == "PC")
-                    drawTextRow("Value", hex32(cpu->bank.read(RegisterBank::PC)),
+                    drawTextRow("Valor", hex32(cpu->bank.read(RegisterBank::PC)),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "AC")
-                    drawTextRow("Value", hex32(cpu->bank.read(RegisterBank::AC)),
+                    drawTextRow("Valor", hex32(cpu->bank.read(RegisterBank::AC)),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "SP")
-                    drawTextRow("Value", hex32(cpu->bank.read(RegisterBank::SP)),
+                    drawTextRow("Valor", hex32(cpu->bank.read(RegisterBank::SP)),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "IR")
-                    drawTextRow("Value", hex32(cpu->bank.read(RegisterBank::IR)),
+                    drawTextRow("Valor", hex32(cpu->bank.read(RegisterBank::IR)),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "TIR")
-                    drawTextRow("Value", hex32(cpu->bank.read(RegisterBank::TIR)),
+                    drawTextRow("Valor", hex32(cpu->bank.read(RegisterBank::TIR)),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "ZERO")
-                    drawTextRow("Value", "0x00000000",
+                    drawTextRow("Valor", "0x00000000",
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "ONE")
-                    drawTextRow("Value", "0x00000001",
+                    drawTextRow("Valor", "0x00000001",
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "MONE")
-                    drawTextRow("Value", "0xFFFFFFFF",
+                    drawTextRow("Valor", "0xFFFFFFFF",
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "AMASK")
-                    drawTextRow("Value", "0x00000FFF",
+                    drawTextRow("Valor", "0x00000FFF",
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "SMASK")
-                    drawTextRow("Value", "0x000000FF",
+                    drawTextRow("Valor", "0x000000FF",
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "REGISTER_A")
-                    drawTextRow("Value", hex32(cpu->bank.read(10)),
+                    drawTextRow("Valor", hex32(cpu->bank.read(10)),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "REGISTER_B")
-                    drawTextRow("Value", hex32(cpu->bank.read(11)),
+                    drawTextRow("Valor", hex32(cpu->bank.read(11)),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "REGISTER_C")
-                    drawTextRow("Value", hex32(cpu->bank.read(12)),
+                    drawTextRow("Valor", hex32(cpu->bank.read(12)),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "REGISTER_D")
-                    drawTextRow("Value", hex32(cpu->bank.read(13)),
+                    drawTextRow("Valor", hex32(cpu->bank.read(13)),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "REGISTER_E")
-                    drawTextRow("Value", hex32(cpu->bank.read(14)),
+                    drawTextRow("Valor", hex32(cpu->bank.read(14)),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "REGISTER_F")
-                    drawTextRow("Value", hex32(cpu->bank.read(15)),
+                    drawTextRow("Valor", hex32(cpu->bank.read(15)),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "REGISTER_BANK")
-                    drawTextRow("Registers", "32 x 32-bit",
+                    drawTextRow("Regs", "32 x 32-bit",
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "A_DECODER")
-                    drawTextRow("A index", std::to_string(mirA),
+                    drawTextRow("Índice A", std::to_string(mirA),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "B_DECODER")
-                    drawTextRow("B index", std::to_string(mirB),
+                    drawTextRow("Índice B", std::to_string(mirB),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "C_DECODER")
-                    drawTextRow("C index", std::to_string(mirC),
+                    drawTextRow("Índice C", std::to_string(mirC),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "A_LATCH")
-                    drawTextRow("Value", hex32(cpu->a.read()),
+                    drawTextRow("Valor", hex32(cpu->a.read()),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "B_LATCH")
-                    drawTextRow("Value", hex32(cpu->b.read()),
+                    drawTextRow("Valor", hex32(cpu->b.read()),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "MAR")
-                    drawTextRow("Address", hex32(cpu->mar.read()),
+                    drawTextRow("Endereço", hex32(cpu->mar.read()),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "MBR")
-                    drawTextRow("Value", hex32(cpu->mbr.read()),
+                    drawTextRow("Valor", hex32(cpu->mbr.read()),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "MIR")
-                    drawTextRow("Word", hex36(cpu->mir.read()),
+                    drawTextRow("Palavra", hex36(cpu->mir.read()),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "MPC")
-                    drawTextRow("Address", std::to_string(cpu->mpc),
+                    drawTextRow("Endereço", std::to_string(cpu->mpc),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "ALU")
                     drawTextRow("N / Z", std::string(cpu->n ? "1 " : "0 ") + (cpu->z ? "/ 1" : "/ 0"),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "AMUX")
-                    drawTextRow("Select", mirUseMbr ? "MBR" : "A latch",
+                    drawTextRow("Seleção", mirUseMbr ? "MBR" : "A latch",
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "SHIFTER")
-                    drawTextRow("Mode", std::to_string((event.word >> 29) & 3),
+                    drawTextRow("Modo", std::to_string((event.word >> 29) & 3),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "MMUX")
-                    drawTextRow("Condition", std::to_string((event.word >> 33) & 3),
+                    drawTextRow("Condição", std::to_string((event.word >> 33) & 3),
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "CONTROL_STORE")
-                    drawTextRow("Size", "256 x 36",
+                    drawTextRow("Tamanho", "256 x 36",
                                 static_cast<int>(inspector.x) + 34, y);
                 else if (selectedComponent == "INCREMENTER")
-                    drawTextRow("Operation", "PC/SP + 1",
+                    drawTextRow("Operação", "PC/SP + 1",
                                 static_cast<int>(inspector.x) + 34, y);
-                else if (selectedComponent == "RAM")
-                    drawTextRow("Words", "4096",
-                                static_cast<int>(inspector.x) + 34, y);
+                else if (selectedComponent == "RAM") {
+                    const int x = static_cast<int>(inspector.x) + 14;
+                    drawTextRow("Palavras", std::to_string(session.memory()->sizeWords()),
+                                x, y);
+                    drawTextRow("Capacidade", std::to_string(RAM::sizeBytes / 1024) + " KiB",
+                                x, y);
+                }
                 else if (selectedComponent == "CACHE") {
-                    drawTextRow("Hits", std::to_string(cacheStats.hits),
+                    drawTextRow("Acertos", std::to_string(cacheStats.hits),
                                 static_cast<int>(inspector.x) + 34, y);
-                    drawTextRow("Misses", std::to_string(cacheStats.misses),
+                    drawTextRow("Falhas", std::to_string(cacheStats.misses),
                                 static_cast<int>(inspector.x) + 34, y);
-                    drawTextRow("Last", lastCacheAccess,
+                    drawTextRow("Último", lastCacheAccess,
                                 static_cast<int>(inspector.x) + 34, y);
                 }
                 else if (selectedComponent == "CLOCK")
-                    drawTextRow("Subcycles", std::to_string(session.cycles()),
+                    drawTextRow("Ciclos", std::to_string(session.cycles()),
                                 static_cast<int>(inspector.x) + 34, y);
                 else
-                    DrawText("No live value mapped.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
+                    drawUiText("Sem valor disponível.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
             } else {
-                DrawText("Load a program to inspect state.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
+                drawUiText("Carregue um programa.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
             }
         } else if (tab == GuiTab::Execution) {
-            DrawText("Microinstruction", static_cast<int>(inspector.x) + 14,
+            drawUiText("Microinstrução", static_cast<int>(inspector.x) + 14,
                      static_cast<int>(inspector.y) + 42, 16, RAYWHITE);
             int y = static_cast<int>(inspector.y) + 74;
+            drawUiText(("IR: " + std::string(cpu ? macroName(cpu->bank.read(RegisterBank::IR)) : "—"))
+                           .c_str(), static_cast<int>(inspector.x) + 14, y, 13, SKYBLUE);
+            y += 25;
             drawTextRow("MPC", std::to_string(event.mpc),
                         static_cast<int>(inspector.x) + 14, y);
-            drawTextRow("Word", hex36(event.word),
+            drawTextRow("Palavra", hex36(event.word),
                         static_cast<int>(inspector.x) + 14, y);
-            drawTextRow("A", std::to_string(static_cast<unsigned>((event.word >> 9) & 0x1F)),
+            drawTextRow("A", registerName(static_cast<unsigned>((event.word >> 9) & 0x1F)),
                         static_cast<int>(inspector.x) + 14, y);
-            drawTextRow("B", std::to_string(static_cast<unsigned>((event.word >> 14) & 0x1F)),
+            drawTextRow("B", registerName(static_cast<unsigned>((event.word >> 14) & 0x1F)),
                         static_cast<int>(inspector.x) + 14, y);
-            drawTextRow("C", std::to_string(static_cast<unsigned>((event.word >> 19) & 0x1F)),
+            drawTextRow("C", registerName(static_cast<unsigned>((event.word >> 19) & 0x1F)),
                         static_cast<int>(inspector.x) + 14, y);
-            drawTextRow("ALU", std::to_string(static_cast<unsigned>((event.word >> 31) & 3)),
+            drawTextRow("ULA", aluName(static_cast<unsigned>((event.word >> 31) & 3)),
                         static_cast<int>(inspector.x) + 14, y);
-            drawTextRow("Shift", std::to_string(static_cast<unsigned>((event.word >> 29) & 3)),
+            drawTextRow("Shift", shiftName(static_cast<unsigned>((event.word >> 29) & 3)),
                         static_cast<int>(inspector.x) + 14, y);
+            drawTextRow("Desvio", conditionName(static_cast<unsigned>((event.word >> 33) & 3)),
+                        static_cast<int>(inspector.x) + 14, y);
+            drawTextRow("Memória", event.memoryStall ? "aguardando" :
+                        ((event.word >> 26) & 1) ? "leitura" :
+                        ((event.word >> 25) & 1) ? "escrita" : "sem acesso",
+                        static_cast<int>(inspector.x) + 14, y);
+            drawTextRow("Microciclos", std::to_string(session.cycles()),
+                        static_cast<int>(inspector.x) + 14, y, SKYBLUE);
+            drawTextRow("Instruções", std::to_string(session.instructions()),
+                        static_cast<int>(inspector.x) + 14, y, SKYBLUE);
             y += 10;
-            DrawText("Recent output", static_cast<int>(inspector.x) + 14, y, 16, RAYWHITE);
-            y += 28;
-            const auto& lines = session.outputs();
-            const std::size_t first = lines.size() > 12 ? lines.size() - 12 : 0;
-            for (std::size_t i = first; i < lines.size(); ++i) {
-                if (y > static_cast<int>(inspector.y + inspector.height) - 24)
-                    break;
-                DrawText(lines[i].c_str(), static_cast<int>(inspector.x) + 14, y, 13, RAYWHITE);
-                y += 19;
-            }
+            drawUiText("Saídas recentes", static_cast<int>(inspector.x) + 14, y, 16, RAYWHITE);
+            drawRecentOutputs(session.outputs(), recentOutputScroll);
         } else if (tab == GuiTab::Info) {
-            DrawText("Architecture", static_cast<int>(inspector.x) + 14,
+            drawUiText("Arquitetura", static_cast<int>(inspector.x) + 14,
                      static_cast<int>(inspector.y) + 42, 16, RAYWHITE);
             int y = static_cast<int>(inspector.y) + 76;
-            DrawText("MIC-1 / 32-bit", static_cast<int>(inspector.x) + 14, y, 15, SKYBLUE);
+            drawUiText("MIC-1 / 32-bit", static_cast<int>(inspector.x) + 14, y, 15, SKYBLUE);
             y += 30;
-            DrawText("4096-word RAM", static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
+            drawUiText("Palavras de 32 bits (word)", static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
             y += 24;
-            DrawText("36-bit microinstructions", static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
+            drawUiText("Microinstruções de 36 bits", static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
             y += 24;
-            DrawText("1024-cycle history", static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
+            drawUiText("Histórico de 1024 ciclos", static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
             y += 40;
-            DrawText("Program", static_cast<int>(inspector.x) + 14, y, 16, RAYWHITE);
+            drawUiText("Programa", static_cast<int>(inspector.x) + 14, y, 16, RAYWHITE);
             y += 24;
-            DrawText(session.path().empty() ? "No program loaded" : session.path().c_str(),
+            drawUiText(session.path().empty() ? "Nenhum programa" : session.path().c_str(),
                      static_cast<int>(inspector.x) + 14, y, 12, LIGHTGRAY);
-            y += 40;
-            DrawText(("Subcycles: " + std::to_string(session.cycles())).c_str(),
-                     static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
-            y += 24;
-            DrawText(("Instructions: " + std::to_string(session.instructions())).c_str(),
-                     static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
         } else if (tab == GuiTab::Debugger) {
-            DrawText("Debugger", static_cast<int>(inspector.x) + 14, static_cast<int>(inspector.y) + 42, 16, RAYWHITE);
+            drawUiText("Depurador", static_cast<int>(inspector.x) + 14, static_cast<int>(inspector.y) + 42, 16, RAYWHITE);
             int y = static_cast<int>(inspector.y) + 76;
 
             if (listingLines.empty()) {
-                DrawText("No .lst file found.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
+                drawUiText("Arquivo .lst não encontrado.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
                 y += 24;
-                DrawText("Run assembly to generate", static_cast<int>(inspector.x) + 14, y, 12, LIGHTGRAY);
+                drawUiText("Monte o programa para gerar", static_cast<int>(inspector.x) + 14, y, 12, LIGHTGRAY);
             } else {
                 const std::uint32_t pc = cpu ? cpu->bank.read(RegisterBank::PC) : 0;
                 std::size_t activeIndex = 0;
@@ -1545,21 +1915,21 @@ int runGUI(const std::string& initialProgram) {
                                       static_cast<int>(inspector.width) - 16, 20,
                                       Fade(GOLD, 0.28f));
                     }
-                    DrawText((lineNumber + "  " + source).c_str(),
+                    drawUiText((lineNumber + "  " + source).c_str(),
                              static_cast<int>(inspector.x) + 14, y, 12,
                              active ? YELLOW : RAYWHITE);
                     y += 20;
                 }
             }
         } else {
-            DrawText("Controls", static_cast<int>(inspector.x) + 14, static_cast<int>(inspector.y) + 42, 16, RAYWHITE);
+            drawUiText("Controles", static_cast<int>(inspector.x) + 14, static_cast<int>(inspector.y) + 42, 16, RAYWHITE);
             int y = static_cast<int>(inspector.y) + 76;
             const char* instructions[] = {
-                "R  Run", "P  Pause", "Space  Step", "B  Back",
-                "X  Reset", "L  Load .bin", "Alt/MB  Orbit", "Wheel  Zoom", "Home  Reset camera"
+                "R  Executar", "P  Pausar/retomar", "Espaço  Avançar", "B  Voltar",
+                "X  Reiniciar", "L  Carregar .bin", "Alt/BM  Girar", "Roda  Zoom", "Home  Restaurar câmera"
             };
             for (const char* instruction : instructions) {
-                DrawText(instruction, static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
+                drawUiText(instruction, static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
                 y += 26;
             }
         }
@@ -1569,45 +1939,48 @@ int runGUI(const std::string& initialProgram) {
 
         const float buttonY = 675.0f;
         const bool controlsEnabled = !editingPath && !speedDialogOpen;
-        if (controlButton({262.0f, buttonY, 72.0f, 26.0f}, "Run", true) && controlsEnabled) {
+        if (iconButton({262.0f, buttonY, 72.0f, 26.0f}, DebugIcon::Play,
+                       "Executar (R)", true) && controlsEnabled) {
             session.run();
             playSfx(sfx.click);
         }
 
-        if (controlButton({342.0f, buttonY, 72.0f, 26.0f}, "Pause") && controlsEnabled) {
-            session.pause();
+        if (iconButton({342.0f, buttonY, 72.0f, 26.0f}, DebugIcon::Pause,
+                       "Pausar/retomar (P)",
+                       false, session.isLoaded() && !session.isRunning() && !session.isHalted()) && controlsEnabled) {
+            togglePause();
             playSfx(sfx.click);
         }
 
-        if (controlButton({422.0f, buttonY, 72.0f, 26.0f}, "Step") && controlsEnabled) {
+        if (iconButton({422.0f, buttonY, 72.0f, 26.0f}, DebugIcon::StepForward,
+                       "Avançar (Espaço)") && controlsEnabled) {
             session.pause();
-            session.step();
+            stepSession();
             playSfx(sfx.step);
         }
 
-        if (controlButton({502.0f, buttonY, 72.0f, 26.0f}, "Back") && controlsEnabled) {
-            session.back();
+        if (iconButton({502.0f, buttonY, 72.0f, 26.0f}, DebugIcon::StepBack,
+                       "Voltar (B)") && controlsEnabled) {
+            backSession();
             playSfx(sfx.click);
         }
 
-        if (controlButton({582.0f, buttonY, 72.0f, 26.0f}, "Reset") && controlsEnabled) {
+        if (iconButton({582.0f, buttonY, 72.0f, 26.0f}, DebugIcon::Reset,
+                       "Reiniciar (X)") && controlsEnabled) {
             session.reset();
+            ramChange = {};
+            stackScroll = 0;
             playSfx(sfx.click);
         }
 
-        if (controlButton({662.0f, buttonY, 72.0f, 26.0f}, "Load") && controlsEnabled) {
+        if (controlButton({662.0f, buttonY, 72.0f, 26.0f}, "Carregar") && controlsEnabled) {
             session.pause();
             pathInput = session.path();
             editingPath = true;
             playSfx(sfx.click);
         }
 
-        if (controlButton({742.0f, buttonY, 108.0f, 26.0f}, "Reset view") && controlsEnabled) {
-            resetCamera();
-            playSfx(sfx.click);
-        }
-
-        DrawText(message.c_str(), 858, 680, 13, ORANGE);
+        drawUiText(message.c_str(), 858, 680, 13, ORANGE);
 
         if (editingPath) {
             DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 0.78f));
@@ -1617,12 +1990,12 @@ int runGUI(const std::string& initialProgram) {
                 620.0f,
                 144.0f
             };
-            roundedPanel(dialog, Color{35, 43, 54, 255}, "Load program");
-            DrawText("Enter .bin path", static_cast<int>(dialog.x) + 18,
+            roundedPanel(dialog, Color{35, 43, 54, 255}, "Carregar programa");
+            drawUiText("Digite o caminho do .bin", static_cast<int>(dialog.x) + 18,
                      static_cast<int>(dialog.y) + 48, 14, LIGHTGRAY);
             DrawRectangleRounded({dialog.x + 18.0f, dialog.y + 74.0f, dialog.width - 36.0f, 34.0f},
                                  0.12f, 6, Color{12, 16, 22, 255});
-            DrawText(pathInput.c_str(), static_cast<int>(dialog.x) + 28,
+            drawUiText(pathInput.c_str(), static_cast<int>(dialog.x) + 28,
                      static_cast<int>(dialog.y) + 82, 15, RAYWHITE);
         }
 
@@ -1633,8 +2006,8 @@ int runGUI(const std::string& initialProgram) {
                 static_cast<float>(GetScreenHeight()) * 0.5f - 160.0f,
                 360.0f, 320.0f
             };
-            roundedPanel(dialog, Color{35, 43, 54, 255}, "Velocidade da simulacao");
-            DrawText("Microciclos por segundo (1x = 10)",
+            roundedPanel(dialog, Color{35, 43, 54, 255}, "Velocidade da simulação");
+            drawUiText("Microciclos por segundo (1x = 10)",
                      static_cast<int>(dialog.x) + 18, static_cast<int>(dialog.y) + 43,
                      14, LIGHTGRAY);
             for (std::size_t i = 0; i < playbackSpeeds.size(); ++i) {
@@ -1671,6 +2044,9 @@ int runGUI(const std::string& initialProgram) {
     UnloadSound(sfx.cacheHit);
     UnloadSound(sfx.cacheMiss);
     CloseAudioDevice();
+
+    if (uiFontLoaded)
+        UnloadFont(uiFont);
 
     CloseWindow();
     return 0;
