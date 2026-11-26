@@ -53,7 +53,7 @@ bool parseOptions(int argc, char* argv[], Options& options) {
     return true;
 }
 
-void printOutput(const MicroCycleEvent& event, bool& characterLineOpen) {
+void printOutput(const SubcycleEvent& event, bool& characterLineOpen) {
     if (event.integerOutput) {
         if (characterLineOpen) {
             std::cout << '\n';
@@ -73,7 +73,7 @@ void printOutput(const MicroCycleEvent& event, bool& characterLineOpen) {
     }
 }
 
-void printTrace(const Core& machine, const MicroCycleEvent& event) {
+void printTrace(const Core& machine, const SubcycleEvent& event) {
     const auto& cpu = machine.cpu();
 
     std::cerr << "cycle=" << machine.cycles()

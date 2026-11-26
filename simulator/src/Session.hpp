@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-// Guarda estados anteriores para permitir voltar um ciclo na simulação
+// Guarda estados anteriores para permitir voltar um subciclo na simulação
 class Session {
 public:
     void load(const std::string& path) {
@@ -41,7 +41,7 @@ public:
 
         history.push_back({ ram, machine->snapshot(), output.size(), lastEventState });
 
-        if (history.size() > 1024) // limita o histórico em 1024 ciclos
+        if (history.size() > 1024) // limita o histórico em 1024 subciclos
             history.pop_front();
 
         try {
@@ -97,14 +97,14 @@ public:
     const std::vector<std::string>& outputs() const { return output; }
     const CPURegisters* cpu() const { return machine ? &machine->cpu() : nullptr; }
     const RAM* memory() const { return isLoaded() ? &ram : nullptr; }
-    const MicroCycleEvent& lastEvent() const { return lastEventState; }
+    const SubcycleEvent& lastEvent() const { return lastEventState; }
 
 private:
     struct History {
         RAM ram;
         Core::Snapshot machine;
         std::size_t outputCount;
-        MicroCycleEvent lastEvent;
+        SubcycleEvent lastEvent;
     };
 
     bool restoreLast() {
@@ -126,7 +126,7 @@ private:
     std::string program;
     std::deque<History> history;
     std::vector<std::string> output;
-    MicroCycleEvent lastEventState;
+    SubcycleEvent lastEventState;
 
     bool running = false;
 };

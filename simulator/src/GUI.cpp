@@ -980,7 +980,7 @@ int runGUI(const std::string& initialProgram) {
     bool previousHalt = false;
     float stepCooldown = 0.0f;
 
-    constexpr float baseMicrocyclesPerSecond = 10.0f;
+    constexpr float baseSubcyclesPerSecond = 10.0f;
     constexpr std::array<float, 5> playbackSpeeds = {1.0f, 0.5f, 0.25f, 1.5f, 2.0f};
     constexpr std::array<const char*, 5> playbackLabels = {"1x", "0.5x", "0.25x", "1.5x", "2x"};
     std::size_t selectedSpeed = 0;
@@ -1031,7 +1031,7 @@ int runGUI(const std::string& initialProgram) {
         return true;
     };
     auto backSession = [&]() {
-        const MicroCycleEvent undone = session.lastEvent();
+        const SubcycleEvent undone = session.lastEvent();
         if (!session.back())
             return false;
         if (undone.memoryWrite)
@@ -1110,9 +1110,9 @@ int runGUI(const std::string& initialProgram) {
         }
 
         if (session.isRunning() && !editingPath && !speedDialogOpen) {
-            // Acumula tempo real para manter a taxa de microciclos independente do FPS
+            // Acumula tempo real para manter a taxa de subciclos independente do FPS
             stepAccumulator += std::min(frameTime, 0.25f) *
-                               baseMicrocyclesPerSecond * playbackSpeeds[selectedSpeed];
+                               baseSubcyclesPerSecond * playbackSpeeds[selectedSpeed];
 
             for (int i = 0; i < 20 && stepAccumulator >= 1.0f && session.isRunning(); ++i) {
                 try {
@@ -1283,7 +1283,7 @@ int runGUI(const std::string& initialProgram) {
         roundedPanel(viewport, Color{18, 23, 31, 255});
 
         const CPURegisters* cpu = session.cpu();
-        const MicroCycleEvent& event = session.lastEvent();
+        const SubcycleEvent& event = session.lastEvent();
         std::uint64_t mir = cpu ? cpu->mir.read() : 0;
         const std::uint8_t mirA = static_cast<std::uint8_t>((mir >> 9) & 0x1F);
         const std::uint8_t mirB = static_cast<std::uint8_t>((mir >> 14) & 0x1F);
@@ -1833,7 +1833,7 @@ int runGUI(const std::string& initialProgram) {
                                 static_cast<int>(inspector.x) + 34, y);
                 }
                 else if (selectedComponent == "CLOCK")
-                    drawTextRow("Ciclos", std::to_string(session.cycles()),
+                    drawTextRow("Subciclos", std::to_string(session.cycles()),
                                 static_cast<int>(inspector.x) + 34, y);
                 else
                     drawUiText("Sem valor disponível.", static_cast<int>(inspector.x) + 14, y, 13, LIGHTGRAY);
@@ -1867,7 +1867,7 @@ int runGUI(const std::string& initialProgram) {
                         ((event.word >> 26) & 1) ? "leitura" :
                         ((event.word >> 25) & 1) ? "escrita" : "sem acesso",
                         static_cast<int>(inspector.x) + 14, y);
-            drawTextRow("Microciclos", std::to_string(session.cycles()),
+            drawTextRow("Subciclos", std::to_string(session.cycles()),
                         static_cast<int>(inspector.x) + 14, y, SKYBLUE);
             drawTextRow("Instruções", std::to_string(session.instructions()),
                         static_cast<int>(inspector.x) + 14, y, SKYBLUE);
@@ -1884,7 +1884,7 @@ int runGUI(const std::string& initialProgram) {
             y += 24;
             drawUiText("Microinstruções de 36 bits", static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
             y += 24;
-            drawUiText("Histórico de 1024 ciclos", static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
+            drawUiText("Histórico de 1024 subciclos", static_cast<int>(inspector.x) + 14, y, 14, RAYWHITE);
             y += 40;
             drawUiText("Programa", static_cast<int>(inspector.x) + 14, y, 16, RAYWHITE);
             y += 24;
@@ -2021,7 +2021,7 @@ int runGUI(const std::string& initialProgram) {
                 360.0f, 320.0f
             };
             roundedPanel(dialog, Color{35, 43, 54, 255}, "Velocidade da simulação");
-            drawUiText("Microciclos por segundo (1x = 10)",
+            drawUiText("Subciclos por segundo (1x = 10)",
                      static_cast<int>(dialog.x) + 18, static_cast<int>(dialog.y) + 43,
                      14, LIGHTGRAY);
             for (std::size_t i = 0; i < playbackSpeeds.size(); ++i) {

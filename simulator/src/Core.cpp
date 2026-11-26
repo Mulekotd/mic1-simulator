@@ -54,11 +54,11 @@ void Core::restore(const Snapshot& state) {
     lastCacheAccess = state.lastInstructionCacheAccess;
 }
 
-MicroCycleEvent Core::step() {
+SubcycleEvent Core::step() {
     if (haltedFlag)
         throw std::logic_error("simulação já encerrada");
 
-    MicroCycleEvent event;
+    SubcycleEvent event;
     event.mpc = cpuState.mpc;
     event.word = control.read(cpuState.mpc);
     event.memoryStall = pending.active && pending.repeat && pending.remaining > 1;
@@ -103,7 +103,7 @@ void Core::validateInstruction(Word word) {
     }
 }
 
-void Core::advanceMemory(MicroCycleEvent& event) {
+void Core::advanceMemory(SubcycleEvent& event) {
     if (!pending.active || --pending.remaining != 0)
         return;
 
@@ -169,7 +169,7 @@ void Core::validateMarSource(std::uint8_t mpc, Word raw) const {
         throw std::out_of_range("endereço indireto fora da RAM");
 }
 
-void Core::executeMicro(MicroCycleEvent& event) {
+void Core::executeMicro(SubcycleEvent& event) {
     const std::uint64_t word = event.word;
     const std::uint8_t mpc = event.mpc;
     const MicroFields fields(word);

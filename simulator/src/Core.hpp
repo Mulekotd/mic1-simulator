@@ -8,8 +8,8 @@
 
 #include <cstdint>
 
-// Dados observáveis de um ciclo da microinstrução
-struct MicroCycleEvent {
+// Dados observáveis de um subciclo da simulação
+struct SubcycleEvent {
     std::uint8_t mpc = 0;
     std::uint64_t word = 0;
     bool integerOutput = false;
@@ -26,7 +26,7 @@ struct MicroCycleEvent {
 
 class Core {
 private:
-    // Transação de memória que ainda consome ciclos até a resposta
+    // Transação de memória que ainda consome subciclos até a resposta
     struct Pending {
         bool active = false;
         bool read = false;
@@ -53,7 +53,7 @@ public:
 
     explicit Core(Memory& memory);
 
-    MicroCycleEvent step();
+    SubcycleEvent step();
     Snapshot snapshot() const;
     void restore(const Snapshot& state);
     const CPURegisters& cpu() const { return cpuState; }
@@ -80,7 +80,7 @@ private:
 
     void validateAddress(std::uint64_t address, bool write = false) const;
     static void validateInstruction(Word word);
-    void advanceMemory(MicroCycleEvent& event);
+    void advanceMemory(SubcycleEvent& event);
     void validateMarSource(std::uint8_t mpc, Word raw) const;
-    void executeMicro(MicroCycleEvent& event);
+    void executeMicro(SubcycleEvent& event);
 };
