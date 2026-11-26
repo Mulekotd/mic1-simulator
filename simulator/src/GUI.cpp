@@ -996,6 +996,24 @@ int runGUI(const std::string& initialProgram) {
     bool draggingRecentOutputScroll = false;
     RamChange ramChange;
 
+    auto resetSession = [&]() {
+        session.reset();
+        ramChange = {};
+        stackScroll = 0;
+        draggingStackScroll = false;
+        recentOutputScroll = 0;
+        draggingRecentOutputScroll = false;
+        knownOutputCount = 0;
+        lastCacheHits = 0;
+        lastCacheMisses = 0;
+        lastCycleCount = 0;
+        previousHalt = false;
+        activityPulse = 0.0f;
+        stepCooldown = 0.0f;
+        stepAccumulator = 0.0f;
+        message = "Programa reiniciado (pausado)";
+    };
+
     auto markRamChange = [&](std::uint32_t address, Word value, bool restored) {
         ramChange = {address, value, restored, 1.6f};
         if (address < stackCellCount) {
@@ -1069,9 +1087,7 @@ int runGUI(const std::string& initialProgram) {
                     playSfx(sfx.click);
                 }
                 if (IsKeyPressed(KEY_X)) {
-                    session.reset();
-                    ramChange = {};
-                    stackScroll = 0;
+                    resetSession();
                     playSfx(sfx.click);
                 }
                 if (IsKeyPressed(KEY_HOME))
@@ -1966,10 +1982,8 @@ int runGUI(const std::string& initialProgram) {
         }
 
         if (iconButton({582.0f, buttonY, 72.0f, 26.0f}, DebugIcon::Reset,
-                       "Reiniciar (X)") && controlsEnabled) {
-            session.reset();
-            ramChange = {};
-            stackScroll = 0;
+                       "Reiniciar (X)") && controlsEnabled && session.isLoaded()) {
+            resetSession();
             playSfx(sfx.click);
         }
 

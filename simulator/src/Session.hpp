@@ -18,20 +18,21 @@ public:
     void load(const std::string& path) {
         RAM loaded;
         loadBinaryImage(path, loaded);
-        ram = loaded;
-        machine = std::make_unique<Core>(ram);
+        initialRam = loaded;
         program = path;
-        history.clear();
-        output.clear();
-        lastEventState = {};
-        running = false;
+        reset();
     }
 
     void reset() {
         if (program.empty())
             throw std::runtime_error("nenhum programa carregado");
 
-        load(program);
+        ram = initialRam;
+        machine = std::make_unique<Core>(ram);
+        history.clear();
+        output.clear();
+        lastEventState = {};
+        running = false;
     }
 
     bool step() {
@@ -120,6 +121,7 @@ private:
     }
 
     RAM ram;
+    RAM initialRam;
     std::unique_ptr<Core> machine;
     std::string program;
     std::deque<History> history;
